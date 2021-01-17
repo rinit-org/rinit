@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "src/core",
+    "src/kansei",
+    "src/parser",
+    "src/rpc",
+    "src/svc",
+]
