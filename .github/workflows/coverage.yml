@@ -1,0 +1,33 @@
+on: [push]
+
+name: build
+
+jobs:
+  check:
+    name: Rust project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install cargo-tarpaulin binary crate
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-tarpaulin
+          version: latest
+          use-tool-cache: true
+
+      - name: Generate coverage
+        uses: actions-rs/cargo@v1
+        with:
+          command: tarpaulin
+          args: --verbose --all-features --workspace --out Xml
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v1
