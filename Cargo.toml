@@ -2,8 +2,8 @@
 
 members = [
     "src/core",
-    "src/kansei",
+    "src/kctl",
+    "src/ksupervisord",
     "src/parser",
     "src/rpc",
-    "src/svc",
 ]
