@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Store options for Longrun and Oneshot
 #[derive(Serialize, Deserialize, Debug)]

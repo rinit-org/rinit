@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -14,7 +17,11 @@ impl Config {
         }
     }
 
-    pub fn add(&mut self, key: &str, value: String) -> Result<(), String> {
+    pub fn add(
+        &mut self,
+        key: &str,
+        value: String,
+    ) -> Result<(), String> {
         match self.contents.get(key) {
             Some(_) => Err(format!("'{}' has already been set", key)),
             None => {
@@ -24,7 +31,10 @@ impl Config {
         }
     }
 
-    pub fn get(&self, key: &str) -> Result<&str, String> {
+    pub fn get(
+        &self,
+        key: &str,
+    ) -> Result<&str, String> {
         match self.contents.get(key) {
             Some(value) => Ok(value),
             None => Err(format!("'{}' has not been set", key)),

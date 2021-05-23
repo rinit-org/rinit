@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use signal_hook::consts::signal::SIGINT;
 
 const DEFAULT_SCRIPT_TIMEOUT: u32 = 3000;
@@ -27,7 +30,10 @@ pub struct Script {
 }
 
 impl Script {
-    pub fn new(prefix: ScriptPrefix, execute: String) -> Script {
+    pub fn new(
+        prefix: ScriptPrefix,
+        execute: String,
+    ) -> Script {
         Script {
             prefix,
             execute,
