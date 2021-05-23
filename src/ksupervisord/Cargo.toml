@@ -1,0 +1,9 @@
+[package]
+name = "ksupervisord"
+version = "0.1.0"
+authors = ["Danilo Spinella <oss@danyspin97.org>"]
+edition = "2018"
+
+[dependencies]
+libc = { version = "0.2", default-features = false}
+
