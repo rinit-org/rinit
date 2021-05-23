@@ -5,5 +5,4 @@ members = [
     "src/kctl",
     "src/ksupervisord",
     "src/parser",
-    "src/rpc",
 ]
