@@ -5,5 +5,5 @@ authors = ["Danilo Spinella <oss@danyspin97.org>"]
 edition = "2018"
 
 [dependencies]
-libc = { version = "0.2", default-features = false}
+libc = { version = "0.2"}
 
