@@ -6,10 +6,6 @@ use serde::{
 
 use super::script_config::ScriptConfig;
 
-const DEFAULT_SCRIPT_TIMEOUT: u32 = 3000;
-const DEFAULT_SCRIPT_TIMEOUT_KILL: u32 = 3000;
-const DEFAULT_SCRIPT_MAX_DEATHS: u8 = 3;
-
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ScriptPrefix {
     Bash,
@@ -33,6 +29,10 @@ pub struct Script {
 }
 
 impl Script {
+    pub const DEFAULT_SCRIPT_TIMEOUT: u32 = 3000;
+    pub const DEFAULT_SCRIPT_TIMEOUT_KILL: u32 = 3000;
+    pub const DEFAULT_SCRIPT_MAX_DEATHS: u8 = 3;
+
     pub fn new(
         prefix: ScriptPrefix,
         execute: String,
@@ -41,9 +41,9 @@ impl Script {
             prefix,
             execute,
             config: ScriptConfig::new(),
-            timeout: DEFAULT_SCRIPT_TIMEOUT,
-            timeout_kill: DEFAULT_SCRIPT_TIMEOUT_KILL,
-            max_deaths: DEFAULT_SCRIPT_MAX_DEATHS,
+            timeout: Self::DEFAULT_SCRIPT_TIMEOUT,
+            timeout_kill: Self::DEFAULT_SCRIPT_TIMEOUT_KILL,
+            max_deaths: Self::DEFAULT_SCRIPT_MAX_DEATHS,
             down_signal: SIGINT,
             autostart: true,
             user: None,
