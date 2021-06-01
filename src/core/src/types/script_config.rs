@@ -42,6 +42,12 @@ impl ScriptConfig {
     }
 }
 
+impl Default for ScriptConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

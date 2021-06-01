@@ -12,7 +12,15 @@ impl ArrayParser {
             is_parsing: false,
         }
     }
+}
 
+impl Default for ArrayParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ArrayParser {
     pub fn start_parsing(
         &mut self,
         line: &str,

@@ -20,3 +20,8 @@ impl ServiceOptions {
         }
     }
 }
+impl Default for ServiceOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
