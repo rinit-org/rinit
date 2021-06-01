@@ -1,8 +1,8 @@
+use libc::SIGINT;
 use serde::{
     Deserialize,
     Serialize,
 };
-use signal_hook::consts::signal::SIGINT;
 
 const DEFAULT_SCRIPT_TIMEOUT: u32 = 3000;
 const DEFAULT_SCRIPT_TIMEOUT_KILL: u32 = 3000;
