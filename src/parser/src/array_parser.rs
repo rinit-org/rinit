@@ -46,9 +46,8 @@ impl ArrayParser {
         self.key = String::from(line[..eq_token_index].trim());
         self.is_parsing = true;
         let rest_of_line = &line[bracket_token_index + 1..];
-        if rest_of_line.len() != 0 {
-            println!("{}", rest_of_line);
-            if rest_of_line.chars().nth(0).unwrap() != ' ' {
+        if !rest_of_line.is_empty() {
+            if !rest_of_line.starts_with(' ') {
                 return Err("No space found after the token '['".to_string());
             }
             self.parse_line(rest_of_line.trim())?;
@@ -61,7 +60,7 @@ impl ArrayParser {
         line: &str,
     ) -> Result<(), String> {
         let line = line.trim();
-        if line.len() == 0 {
+        if line.is_empty() {
             return Ok(());
         }
 
@@ -81,7 +80,7 @@ impl ArrayParser {
             self.is_parsing = false;
         }
 
-        if items.len() != 0 {
+        if !items.is_empty() {
             let new_values = &mut items.iter().map(|&item| String::from(item)).collect();
             self.values.append(new_values);
         }
