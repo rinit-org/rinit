@@ -10,5 +10,4 @@ pub struct Oneshot {
     pub start: Script,
     pub stop: Option<Script>,
     pub options: ServiceOptions,
-    pub environment: Config,
 }

@@ -6,13 +6,13 @@ use serde::{
 };
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Config {
+pub struct ScriptConfig {
     contents: HashMap<String, String>,
 }
 
-impl Config {
-    pub fn new() -> Config {
-        Config {
+impl ScriptConfig {
+    pub fn new() -> ScriptConfig {
+        ScriptConfig {
             contents: HashMap::new(),
         }
     }
@@ -48,13 +48,13 @@ mod tests {
 
     #[test]
     fn add_and_get() {
-        let mut conf = Config::new();
+        let mut conf = ScriptConfig::new();
         conf.add("key1", String::from("value1")).unwrap();
     }
 
     #[test]
     fn add_multiple_times() {
-        let mut conf = Config::new();
+        let mut conf = ScriptConfig::new();
         conf.add("key1", String::from("value1")).unwrap();
         let res = conf.add("key1", String::from("value2"));
         let expected = Err(String::from("'key1' has already been set"));
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn get_non_existant_value() {
-        let conf = Config::new();
+        let conf = ScriptConfig::new();
         let res = conf.get("key1");
         let expected = Err(String::from("'key1' has not been set"));
         assert_eq!(res, expected);
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn get_value() {
-        let mut conf = Config::new();
+        let mut conf = ScriptConfig::new();
         conf.add("key1", String::from("value1")).unwrap();
         let value = conf.get("key1").unwrap();
         assert_eq!(value, String::from("value1"));

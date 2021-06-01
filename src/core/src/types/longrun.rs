@@ -10,5 +10,4 @@ pub struct Longrun {
     pub run: Script,
     pub finish: Option<Script>,
     pub options: ServiceOptions,
-    pub environment: Config,
 }

@@ -4,6 +4,8 @@ use serde::{
     Serialize,
 };
 
+use super::script_config::ScriptConfig;
+
 const DEFAULT_SCRIPT_TIMEOUT: u32 = 3000;
 const DEFAULT_SCRIPT_TIMEOUT_KILL: u32 = 3000;
 const DEFAULT_SCRIPT_MAX_DEATHS: u8 = 3;
@@ -19,6 +21,7 @@ pub enum ScriptPrefix {
 pub struct Script {
     pub prefix: ScriptPrefix,
     pub execute: String,
+    pub config: ScriptConfig,
     pub timeout: u32,
     pub timeout_kill: u32,
     pub max_deaths: u8,
@@ -37,6 +40,7 @@ impl Script {
         Script {
             prefix,
             execute,
+            config: ScriptConfig::new(),
             timeout: DEFAULT_SCRIPT_TIMEOUT,
             timeout_kill: DEFAULT_SCRIPT_TIMEOUT_KILL,
             max_deaths: DEFAULT_SCRIPT_MAX_DEATHS,
