@@ -1,1 +1,1 @@
-mod array_parser;
+pub mod array_parser;
