@@ -1,3 +1,18 @@
+use snafu::{
+    ensure,
+    Snafu,
+};
+
+#[derive(Debug, Snafu, PartialEq)]
+pub enum ArrayParserError {
+    #[snafu(display("No space found after the token '['"))]
+    NoSpaceAfterStartTokenError,
+    #[snafu(display("Multiple closing delimeters ']' found"))]
+    MultipleClosingDelimiterFoundError,
+    #[snafu(display("Values found after closing delimeter ']'"))]
+    ValuesFoundAfterEndingDelimeterError,
+}
+
 pub struct ArrayParser {
     pub key: String,
     pub values: Vec<String>,
@@ -24,7 +39,7 @@ impl ArrayParser {
     pub fn start_parsing(
         &mut self,
         line: &str,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, ArrayParserError> {
         let eq_token_index = line.find('=');
         if eq_token_index == None {
             // this is an error, but let the key_value parser throws
@@ -47,9 +62,7 @@ impl ArrayParser {
         self.is_parsing = true;
         let rest_of_line = &line[bracket_token_index + 1..];
         if !rest_of_line.is_empty() {
-            if !rest_of_line.starts_with(' ') {
-                return Err("No space found after the token '['".to_string());
-            }
+            ensure!(rest_of_line.starts_with(' '), NoSpaceAfterStartTokenError);
             self.parse_line(rest_of_line.trim())?;
         }
         Ok(true)
@@ -58,7 +71,7 @@ impl ArrayParser {
     pub fn parse_line(
         &mut self,
         line: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ArrayParserError> {
         let line = line.trim();
         if line.is_empty() {
             return Ok(());
@@ -66,14 +79,12 @@ impl ArrayParser {
 
         let mut items: Vec<&str> = line.split(' ').collect();
         let count = items.iter().filter(|&n| *n == "]").count();
-        if count > 1 {
-            return Err(String::from("Multiple closing delimeters ']' found"));
-        }
+        ensure!(count < 2, MultipleClosingDelimiterFoundError);
 
-        let last = items.last().unwrap_or(&"");
-        if count == 1 && last != &"]" {
-            return Err(String::from("Values found after closing delimeter ']'"));
-        }
+        ensure!(
+            count != 1 || items.last().unwrap_or(&"") == &"]",
+            ValuesFoundAfterEndingDelimeterError
+        );
 
         if count == 1 {
             items.pop();
@@ -94,18 +105,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_empty_array() {
+    fn parse_empty_array() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
-        let res = parser.start_parsing("key = [ ]").unwrap();
+        let res = parser.start_parsing("key = [ ]")?;
         assert_eq!(res, true);
         assert_eq!(parser.values, Vec::<String>::new());
         assert!(!parser.is_parsing);
+        Ok(())
     }
 
     #[test]
-    fn parse_one_line_array() {
+    fn parse_one_line_array() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
-        let res = parser.start_parsing("key = [ value1 value2 ]").unwrap();
+        let res = parser.start_parsing("key = [ value1 value2 ]")?;
         assert_eq!(res, true);
 
         assert_eq!(parser.key, "key");
@@ -114,10 +126,11 @@ mod tests {
             parser.values,
             vec![String::from("value1"), String::from("value2")]
         );
+        Ok(())
     }
 
     #[test]
-    fn parse_multiline_value() -> Result<(), String> {
+    fn parse_multiline_value() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
         let res = parser.start_parsing("key = [")?;
         assert!(res);
@@ -133,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_value_and_ending_token_on_the_same_line() -> Result<(), String> {
+    fn parse_value_and_ending_token_on_the_same_line() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
         let res = parser.start_parsing("key = [")?;
         assert!(res);
@@ -154,7 +167,7 @@ mod tests {
     #[test]
     fn error_no_space_after() {
         let mut parser = ArrayParser::new();
-        let err = parser.start_parsing("key = [value1 value2 ]").unwrap_err();
-        assert_eq!(err, "No space found after the token '['");
+        let err = parser.start_parsing("key = [value1 value2 ]");
+        assert_eq!(err, Err(ArrayParserError::NoSpaceAfterStartTokenError));
     }
 }

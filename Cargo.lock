@@ -219,6 +219,9 @@ dependencies = [
 [[package]]
 name = "kansei-parser"
 version = "0.1.0"
+dependencies = [
+ "snafu",
+]
 
 [[package]]
 name = "kctl"
