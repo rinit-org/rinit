@@ -1,6 +1,7 @@
 mod bundle;
 mod longrun;
 mod oneshot;
+mod provider;
 mod script;
 mod script_config;
 mod service;
@@ -11,6 +12,7 @@ pub use self::{
     bundle::*,
     longrun::*,
     oneshot::*,
+    provider::*,
     script::*,
     script_config::*,
     service::*,
