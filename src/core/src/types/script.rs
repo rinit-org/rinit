@@ -6,14 +6,14 @@ use serde::{
 
 use super::script_config::ScriptConfig;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum ScriptPrefix {
     Bash,
     Path,
     Sh,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Script {
     pub prefix: ScriptPrefix,
     pub execute: String,

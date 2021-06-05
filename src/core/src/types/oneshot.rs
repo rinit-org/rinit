@@ -5,7 +5,7 @@ use serde::{
 
 use super::*;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Oneshot {
     pub start: Script,
     pub stop: Option<Script>,
