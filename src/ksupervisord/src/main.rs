@@ -90,7 +90,7 @@ fn spawn_svc(configdir: &CStr) -> Result<pid_t, io::Error> {
 
 fn spawn_and_supervise_svc(configdir: &CStr) -> PidFd {
     let pid = loop {
-        if let Ok(pid) = spawn_svc(&configdir) {
+        if let Ok(pid) = spawn_svc(configdir) {
             break pid;
         } else {
             eprintln!("unable to spawn ksvc");
