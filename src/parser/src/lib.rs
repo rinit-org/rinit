@@ -1,1 +1,3 @@
-pub mod array_parser;
+mod array_parser;
+
+pub use array_parser::*;
