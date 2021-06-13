@@ -1,0 +1,7 @@
+name = foo
+type = bundle
+
+[options]
+contents = [
+  bar
+]
