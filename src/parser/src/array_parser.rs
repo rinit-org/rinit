@@ -112,7 +112,7 @@ impl ArrayParser {
                 values: dups.to_vec()
             }
         );
-        ensure!(self.values.len() != 0, EmptyArray {});
+        ensure!(!self.values.is_empty(), EmptyArray {});
         Ok(self.values)
     }
 }
