@@ -5,6 +5,10 @@ use snafu::{
 
 #[derive(Debug, Snafu, PartialEq)]
 pub enum ArrayParserError {
+    #[snafu(display("values {:?} are duplicated", values))]
+    DuplicatedValuesFound { values: Vec<String> },
+    #[snafu(display("the array is empty"))]
+    EmptyArray,
     #[snafu(display("No space found after the token '['"))]
     NoSpaceAfterStartTokenError,
     #[snafu(display("Multiple closing delimeters ']' found"))]
@@ -15,7 +19,7 @@ pub enum ArrayParserError {
 
 pub struct ArrayParser {
     pub key: String,
-    pub values: Vec<String>,
+    values: Vec<String>,
     pub is_parsing: bool,
 }
 
@@ -97,6 +101,19 @@ impl ArrayParser {
         }
 
         Ok(())
+    }
+
+    pub fn get_values(mut self) -> Result<Vec<String>, ArrayParserError> {
+        self.values.sort_unstable();
+        let (_, dups) = self.values.partition_dedup();
+        ensure!(
+            dups.is_empty(),
+            DuplicatedValuesFound {
+                values: dups.to_vec()
+            }
+        );
+        ensure!(self.values.len() != 0, EmptyArray {});
+        Ok(self.values)
     }
 }
 
