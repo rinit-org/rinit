@@ -24,17 +24,6 @@ use snafu::{
 
 use crate::service::service_builder::*;
 
-struct ServiceParser {
-    name: String,
-}
-
-enum ServiceType {
-    Bundle,
-    Longrun,
-    Oneshot,
-    Virtual,
-}
-
 #[derive(Snafu, Debug)]
 pub enum ParseServiceError {
     #[snafu(display("unable to open file {:?}: {}", path, source))]
