@@ -3,8 +3,10 @@ use serde::{
     Serialize,
 };
 
+use super::bundle_options::BundleOptions;
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Bundle {
     pub name: String,
-    pub contents: Vec<String>,
+    pub options: BundleOptions,
 }

@@ -25,7 +25,7 @@ impl Service {
 
     pub fn dependencies(&self) -> &[String] {
         match &self {
-            Self::Bundle(bundle) => &bundle.contents,
+            Self::Bundle(bundle) => &bundle.options.contents,
             Self::Longrun(longrun) => &longrun.options.dependencies,
             Self::Oneshot(oneshot) => &oneshot.options.dependencies,
             // TODO: What should be done here?

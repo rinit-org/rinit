@@ -1,4 +1,5 @@
 mod bundle;
+mod bundle_options;
 mod longrun;
 mod oneshot;
 mod provider;
@@ -10,6 +11,7 @@ mod virtual_service;
 
 pub use self::{
     bundle::*,
+    bundle_options::*,
     longrun::*,
     oneshot::*,
     provider::*,
