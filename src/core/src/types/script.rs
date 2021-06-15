@@ -1,8 +1,11 @@
+use std::convert::TryFrom;
+
 use libc::SIGINT;
 use serde::{
     Deserialize,
     Serialize,
 };
+use snafu::Snafu;
 
 use super::script_config::ScriptConfig;
 
@@ -11,6 +14,29 @@ pub enum ScriptPrefix {
     Bash,
     Path,
     Sh,
+}
+
+#[derive(Snafu, Debug)]
+pub struct InvalidScriptPrefixError {
+    prefix: String,
+}
+
+impl TryFrom<String> for ScriptPrefix {
+    type Error = InvalidScriptPrefixError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(match value.as_str() {
+            "bash" => ScriptPrefix::Bash,
+            "path" => ScriptPrefix::Path,
+            "sh" => ScriptPrefix::Sh,
+            _ => {
+                InvalidScriptPrefixContext {
+                    prefix: value.to_owned(),
+                }
+                .fail()?
+            }
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
