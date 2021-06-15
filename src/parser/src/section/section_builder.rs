@@ -10,6 +10,7 @@ use snafu::{
 };
 
 use crate::{
+    code_parser::CodeParser,
     is_empty_line::is_empty_line,
     parse_section::parse_section,
     ArrayParser,
@@ -26,6 +27,10 @@ pub enum SectionBuilderError {
     ArrayWithDuplicates { duplicates: Vec<String> },
     #[snafu(display("field {} has not been closed", field))]
     ArrayNotClosed { field: String },
+    #[snafu(display("error while parsing code: {}", source))]
+    CodeParserError {
+        source: crate::code_parser::CodeParserError,
+    },
     #[snafu(display("{} field has already been set", field))]
     DuplicateField { field: String },
     #[snafu(display("{} is not a valid field", field))]
@@ -69,6 +74,7 @@ pub trait SectionBuilder: Any {
         &mut self,
         values: &mut HashMap<&'static str, String>,
         array_values: &mut HashMap<&'static str, Vec<String>>,
+        code_values: &mut HashMap<&'static str, String>,
     );
 
     fn parse_until_next_section<'a>(
@@ -76,12 +82,34 @@ pub trait SectionBuilder: Any {
         lines: &'a [String],
     ) -> Result<&'a [String]> {
         let mut array_parser = ArrayParser::new();
+        let mut code_parser = CodeParser::new();
         let mut values: HashMap<&'static str, String> = HashMap::new();
         let mut array_values: HashMap<&'static str, Vec<String>> = HashMap::new();
+        let mut code_values: HashMap<&'static str, String> = HashMap::new();
         let mut next_section: &'a [String] = &[];
         for (index, line) in lines.iter().enumerate() {
+            if code_parser.is_parsing {
+                code_parser.parse_line(line);
+                if code_parser.is_parsing {
+                    continue;
+                }
+                add_field_value(
+                    &code_parser.key,
+                    code_parser.code,
+                    &mut code_values,
+                    self.get_code_fields(),
+                )?;
+
+                code_parser = CodeParser::new();
+            }
+
             let line = line.trim();
             if is_empty_line(line) {
+                continue;
+            } else if code_parser
+                .start_parsing(line)
+                .with_context(|| CodeParserError)?
+            {
                 continue;
             } else if (array_parser.is_parsing && {
                 array_parser.parse_line(line).context(ArrayParserError {
@@ -126,7 +154,7 @@ pub trait SectionBuilder: Any {
             }
         );
 
-        self.build(&mut values, &mut array_values);
+        self.build(&mut values, &mut array_values, &mut code_values);
 
         Ok(next_section)
     }

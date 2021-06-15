@@ -8,4 +8,5 @@ edition = "2018"
 kansei-core = { path = "../core" }
 async-std = "1.9"
 futures = "0.3"
+nix = "0.21"
 snafu = { version = "0.6", features = ["std", "futures"] }

@@ -1,7 +1,10 @@
 #![feature(slice_partition_dedup)]
+#![feature(fn_traits)]
 #![feature(type_ascription)]
+#![feature(unboxed_closures)]
 
 mod array_parser;
+mod code_parser;
 mod is_empty_line;
 mod parse_section;
 mod section;
