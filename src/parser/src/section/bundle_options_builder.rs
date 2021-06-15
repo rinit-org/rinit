@@ -30,6 +30,7 @@ impl SectionBuilder for BundleOptionsBuilder {
         &mut self,
         _values: &mut HashMap<&'static str, String>,
         array_values: &mut HashMap<&'static str, Vec<String>>,
+        _code_values: &mut HashMap<&'static str, String>,
     ) {
         let contents = array_values.remove("contents");
         self.bundle_options = Some(
