@@ -109,7 +109,12 @@ pub trait SectionBuilder: Any {
                 next_section = &lines[index..];
                 break;
             } else if let Some((key, value)) = line.split_once('=') {
-                add_field_value(key, value.to_string(), &mut values, self.get_array_fields())?;
+                add_field_value(
+                    key.trim(),
+                    value.trim().to_string(),
+                    &mut values,
+                    self.get_fields(),
+                )?;
             }
         }
 
