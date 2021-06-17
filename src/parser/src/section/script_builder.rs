@@ -69,7 +69,7 @@ impl SectionBuilder for ScriptBuilder {
     fn build(
         &mut self,
         values: &mut HashMap<&'static str, String>,
-        array_values: &mut HashMap<&'static str, Vec<String>>,
+        _array_values: &mut HashMap<&'static str, Vec<String>>,
         code_values: &mut HashMap<&'static str, String>,
     ) {
         let args: (&mut HashMap<&str, String>,) = (values,);
@@ -120,7 +120,7 @@ impl SectionBuilder for ScriptBuilder {
                 let notify = values
                     .remove("notify")
                     .map_or(Ok(None), |notify| {
-                        notify.parse::<u8>().map(|notify| Some(notify))
+                        notify.parse::<u8>().map(Some)
                     })
                     .with_context(|| {
                         InvalidInteger {

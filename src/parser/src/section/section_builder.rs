@@ -104,11 +104,10 @@ pub trait SectionBuilder: Any {
             }
 
             let line = line.trim();
-            if is_empty_line(line) {
-                continue;
-            } else if code_parser
-                .start_parsing(line)
-                .with_context(|| CodeParserError)?
+            if is_empty_line(line)
+                || code_parser
+                    .start_parsing(line)
+                    .with_context(|| CodeParserError)?
             {
                 continue;
             } else if (array_parser.is_parsing && {
