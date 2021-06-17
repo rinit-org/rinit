@@ -3,14 +3,8 @@
 extern crate libc;
 
 use std::{
-    ffi::{
-        CStr,
-        CString,
-    },
-    io,
-    mem,
     os::unix::prelude::*,
-    process,
+    process::Command,
     ptr,
     sync::mpsc::{
         self,
@@ -22,7 +16,6 @@ use std::{
 };
 
 use anyhow::{
-    bail,
     Context,
     Result,
 };
@@ -30,13 +23,18 @@ use async_pidfd::PidFd;
 use clap::Clap;
 use libc::{
     c_char,
-    pid_t,
-    sigset_t,
-    SFD_CLOEXEC,
-    SIGINT,
     SIGKILL,
-    SIGTERM,
-    SIG_BLOCK,
+};
+use nix::sys::{
+    signal::{
+        SigSet,
+        SIGINT,
+        SIGTERM,
+    },
+    signalfd::{
+        SfdFlags,
+        SignalFd,
+    },
 };
 use polling::{
     Event,
@@ -51,54 +49,17 @@ struct Opts {
     configdir: Option<String>,
 }
 
-// io::Error includes all system errors
-// https://stackoverflow.com/questions/42772307/how-do-i-handle-errors-from-libc-functions-in-an-idiomatic-rust-manner
-macro_rules! try_syscall {
-    ($ret:expr, $msg:tt) => {
-        if $ret == -1 {
-            bail!("{}: {}", $msg, io::Error::last_os_error());
-        } else {
-            $ret
-        }
-    };
-}
-
-fn spawn_svc(configdir: &CStr) -> Result<pid_t, io::Error> {
-    let pid = unsafe { libc::fork() };
-    if pid == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    if pid == 0 {
-        unsafe {
-            let exe = CString::new("ksvc").unwrap();
-            let config_file = configdir;
-            let ret = libc::execlp(
-                exe.as_ptr(),
-                exe.as_ptr(),
-                config_file.as_ptr(),
-                ptr::null() as *const libc::c_char,
-            );
-            if ret == -1 {
-                eprintln!("there has been an error while executing ksvc");
-                process::exit(1);
-            }
-        }
-    }
-
-    Ok(pid)
-}
-
-fn spawn_and_supervise_svc(configdir: &CStr) -> PidFd {
-    let pid = loop {
-        if let Ok(pid) = spawn_svc(configdir) {
-            break pid;
+fn spawn_svc(configdir: &str) -> PidFd {
+    let child = loop {
+        if let Ok(child) = Command::new("ksvc").args([configdir]).spawn() {
+            break child;
         } else {
             eprintln!("unable to spawn ksvc");
             thread::sleep(time::Duration::from_secs(5));
         }
     };
     loop {
-        if let Ok(pidfd) = PidFd::from_pid(pid) {
+        if let Ok(pidfd) = PidFd::from_pid(child.id() as libc::pid_t) {
             break pidfd;
         } else {
             eprintln!("unable to open pidfd");
@@ -124,41 +85,21 @@ pub fn main() -> Result<()> {
             .to_string()
     };
 
-    let mut sigset: sigset_t = unsafe { mem::zeroed() };
-    unsafe {
-        try_syscall!(
-            libc::sigemptyset(&mut sigset as *mut sigset_t),
-            "unable to create empty signal set"
-        );
-        try_syscall!(
-            libc::sigaddset(&mut sigset as *mut sigset_t, SIGINT),
-            "unable to add signal SIGINT to signal set"
-        );
-        try_syscall!(
-            libc::sigaddset(&mut sigset as *mut sigset_t, SIGTERM),
-            "unable to add signal SIGTERM to signal set"
-        );
+    let mut mask = SigSet::empty();
+    mask.add(SIGINT);
+    mask.add(SIGTERM);
+    mask.thread_block().context("unable to mask signals")?;
 
-        try_syscall!(
-            libc::sigprocmask(SIG_BLOCK, &sigset as *const sigset_t, ptr::null_mut()),
-            "unable to mask signals"
-        );
-    }
+    let sfd = SignalFd::with_flags(&mask, SfdFlags::SFD_CLOEXEC)
+        .context("unable to initialize signalfd")?;
 
-    let signalfd = try_syscall!(
-        unsafe { libc::signalfd(-1, &sigset as *const sigset_t, SFD_CLOEXEC) },
-        "unable to open signalfd"
-    );
-
-    let configdir = CString::new(configdir).context("unable to create c string for configdir")?;
     // If this operation fails at startup, just make the program fails
-    let mut pidfd = PidFd::from_pid(spawn_svc(&configdir).context("unable to spawn ksvc")?)
-        .context("unable to open pidfd")?;
+    let mut pidfd = spawn_svc(&configdir);
     let poller = Poller::new()?;
     const PIDFD: usize = 0;
     const SIGNALFD: usize = 1;
     poller.add(&pidfd, Event::readable(PIDFD))?;
-    poller.add(signalfd as i32, Event::readable(SIGNALFD))?;
+    poller.add(sfd.as_raw_fd(), Event::readable(SIGNALFD))?;
 
     let mut events = Vec::new();
     // 10 events are too many, but it's still better to allocate more now at startup
@@ -174,7 +115,7 @@ pub fn main() -> Result<()> {
                 // The possible errors shouldn't likely happen
                 // If they happen, we can't ignore them, the process has already exited anyway
                 let _ = pidfd.wait();
-                pidfd = spawn_and_supervise_svc(&configdir);
+                pidfd = spawn_svc(&configdir);
                 'modify_poller: loop {
                     // Use Poller::add because the pidfd is different, hence Poller::modify won't
                     // work
@@ -190,7 +131,7 @@ pub fn main() -> Result<()> {
                     libc::syscall(
                         libc::SYS_pidfd_send_signal,
                         pidfd_raw,
-                        SIGTERM,
+                        libc::SIGTERM,
                         ptr::null_mut() as *mut c_char,
                         0,
                     )

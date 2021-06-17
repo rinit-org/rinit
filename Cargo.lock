@@ -487,6 +487,7 @@ dependencies = [
  "async-pidfd",
  "clap",
  "libc",
+ "nix",
  "polling",
  "xdg",
 ]
