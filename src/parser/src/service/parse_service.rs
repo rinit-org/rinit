@@ -90,10 +90,54 @@ pub async fn parse_service(path: &Path) -> Result<Service> {
     line.clear();
 
     read_key_value!("type", service_type, TypeNotFound, reader, line, path);
-    let mut builder = match service_type {
-        "bundle" => BundleBuilder::new(name),
-        // "longrun" => LongrunParser::parse(name, reader),
-        // "oneshot" => OneshotParser::parse(name, reader),
+    let lines = &reader
+        .lines()
+        .map(|line| line.unwrap())
+        .collect::<Vec<String>>()
+        .await;
+    match service_type {
+        "bundle" => {
+            let mut builder = BundleBuilder::new(name);
+            builder.parse(lines).with_context(|| {
+                ServiceParse {
+                    path: path.to_owned(),
+                }
+            })?;
+
+            builder.build().with_context(|| {
+                ServiceBuild {
+                    path: path.to_owned(),
+                }
+            })
+        }
+        "longrun" => {
+            let mut builder = LongrunBuilder::new(name);
+            builder.parse(lines).with_context(|| {
+                ServiceParse {
+                    path: path.to_owned(),
+                }
+            })?;
+
+            builder.build().with_context(|| {
+                ServiceBuild {
+                    path: path.to_owned(),
+                }
+            })
+        }
+        "oneshot" => {
+            let mut builder = OneshotBuilder::new(name);
+            builder.parse(lines).with_context(|| {
+                ServiceParse {
+                    path: path.to_owned(),
+                }
+            })?;
+
+            builder.build().with_context(|| {
+                ServiceBuild {
+                    path: path.to_owned(),
+                }
+            })
+        }
         // "virtual" => VirtualParser::parse(name, reader),
         _ => {
             TypeNotFound {
@@ -101,26 +145,7 @@ pub async fn parse_service(path: &Path) -> Result<Service> {
             }
             .fail()?
         }
-    };
-    builder
-        .parse(
-            &reader
-                .lines()
-                .map(|line| line.unwrap())
-                .collect::<Vec<String>>()
-                .await,
-        )
-        .with_context(|| {
-            ServiceParse {
-                path: path.to_owned(),
-            }
-        })?;
-
-    builder.build().with_context(|| {
-        ServiceBuild {
-            path: path.to_owned(),
-        }
-    })
+    }
 }
 
 #[cfg(test)]
@@ -156,5 +181,74 @@ mod test {
         assert!(task::block_on(parse_service(&path)).is_err());
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_oneshot() -> Result<(), ParseServiceError> {
+        assert_eq!(
+            Service::Oneshot(Oneshot {
+                name: "foo".to_string(),
+                start: Script::new(ScriptPrefix::Bash, "    exit 0".to_string()),
+                stop: None,
+                options: ServiceOptions::new(),
+            }),
+            task::block_on(parse_service(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("test/samples/oneshot")
+                    .as_path()
+            ))?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_oneshot_with_stop() -> Result<(), ParseServiceError> {
+        assert_eq!(
+            Service::Oneshot(Oneshot {
+                name: "foo".to_string(),
+                start: Script::new(ScriptPrefix::Bash, "    exit 0".to_string()),
+                stop: Some(Script::new(ScriptPrefix::Sh, "    exit 1".to_string())),
+                options: ServiceOptions::new(),
+            }),
+            task::block_on(parse_service(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("test/samples/oneshot_with_stop")
+                    .as_path()
+            ))?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_longrun() -> Result<(), ParseServiceError> {
+        assert_eq!(
+            Service::Longrun(Longrun {
+                name: "foo".to_string(),
+                run: Script::new(ScriptPrefix::Bash, "    loop".to_string()),
+                finish: None,
+                options: ServiceOptions::new(),
+            }),
+            task::block_on(parse_service(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("test/samples/longrun")
+                    .as_path()
+            ))?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_longrun_no_run() {
+        assert!(
+            task::block_on(parse_service(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("test/samples/longrun_no_run")
+                    .as_path()
+            ))
+            .is_err()
+        );
     }
 }

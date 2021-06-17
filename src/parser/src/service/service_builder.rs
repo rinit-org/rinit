@@ -1,6 +1,9 @@
 use kansei_core::types::{
     Bundle,
+    Longrun,
+    Oneshot,
     Service,
+    ServiceOptions,
 };
 use snafu::{
     ensure,
@@ -15,8 +18,10 @@ use crate::{
     parse_section::parse_section,
     section::{
         BundleOptionsBuilder,
+        ScriptBuilder,
         SectionBuilder,
         SectionBuilderError,
+        ServiceOptionsBuilder,
     },
 };
 
@@ -37,7 +42,7 @@ pub enum ServiceBuilderError {
 
 macro_rules! parse_sections{
     ($self:ident, $( $section:expr, $builder:expr ),*) => {
-    pub fn parse(&mut $self, lines: &[String]) -> Result<(), ServiceBuilderError> {
+    fn parse(&mut $self, lines: &[String]) -> Result<(), ServiceBuilderError> {
         use self::InvalidSection;
         let mut lines: &[String] = lines;
         let mut start = 0;
@@ -72,6 +77,10 @@ macro_rules! parse_sections{
 
 pub trait ServiceBuilder {
     fn build(self) -> Result<Service, Box<dyn snafu::Error>>;
+    fn parse(
+        &mut self,
+        lines: &[String],
+    ) -> Result<(), ServiceBuilderError>;
 }
 
 pub struct BundleBuilder {
@@ -92,8 +101,54 @@ impl BundleBuilder {
             options_builder: BundleOptionsBuilder::new(),
         }
     }
+}
 
-    parse_sections!(self, "options", self.options_builder);
+pub struct OneshotBuilder {
+    name: String,
+    start_builder: ScriptBuilder,
+    stop_builder: ScriptBuilder,
+    options_builder: ServiceOptionsBuilder,
+}
+
+#[derive(Snafu, Debug)]
+pub enum OneshotBuilderError {
+    #[snafu(display("no start section found"))]
+    NoStartSection,
+}
+
+impl OneshotBuilder {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            start_builder: ScriptBuilder::new_for_section("start"),
+            stop_builder: ScriptBuilder::new_for_section("stop"),
+            options_builder: ServiceOptionsBuilder::new(),
+        }
+    }
+}
+
+pub struct LongrunBuilder {
+    name: String,
+    run_builder: ScriptBuilder,
+    finish_builder: ScriptBuilder,
+    options_builder: ServiceOptionsBuilder,
+}
+
+#[derive(Snafu, Debug)]
+pub enum LongrunBuilderError {
+    #[snafu(display("no start section found"))]
+    NoRunSection,
+}
+
+impl LongrunBuilder {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            run_builder: ScriptBuilder::new_for_section("run"),
+            finish_builder: ScriptBuilder::new_for_section("finish"),
+            options_builder: ServiceOptionsBuilder::new(),
+        }
+    }
 }
 
 impl ServiceBuilder for BundleBuilder {
@@ -106,4 +161,67 @@ impl ServiceBuilder for BundleBuilder {
                 .with_context(|| NoOptionsSection)??,
         }))
     }
+
+    parse_sections!(self, "options", self.options_builder);
+}
+
+impl ServiceBuilder for OneshotBuilder {
+    fn build(self) -> Result<Service, Box<dyn Error>> {
+        Ok(Service::Oneshot(Oneshot {
+            name: self.name,
+            start: self
+                .start_builder
+                .script
+                .with_context(|| NoStartSection)??,
+            stop: if let Some(stop) = self.stop_builder.script {
+                Some(stop?)
+            } else {
+                None
+            },
+            options: if let Some(options) = self.options_builder.options {
+                options?
+            } else {
+                ServiceOptions::new()
+            },
+        }))
+    }
+
+    parse_sections!(
+        self,
+        "start",
+        self.start_builder,
+        "stop",
+        self.stop_builder,
+        "options",
+        self.options_builder
+    );
+}
+
+impl ServiceBuilder for LongrunBuilder {
+    fn build(self) -> Result<Service, Box<dyn Error>> {
+        Ok(Service::Longrun(Longrun {
+            name: self.name,
+            run: self.run_builder.script.with_context(|| NoRunSection)??,
+            finish: if let Some(finish) = self.finish_builder.script {
+                Some(finish?)
+            } else {
+                None
+            },
+            options: if let Some(options) = self.options_builder.options {
+                options?
+            } else {
+                ServiceOptions::new()
+            },
+        }))
+    }
+
+    parse_sections!(
+        self,
+        "run",
+        self.run_builder,
+        "finish",
+        self.finish_builder,
+        "options",
+        self.options_builder
+    );
 }

@@ -1,0 +1,7 @@
+name = foo
+type = oneshot
+[start]
+execute = (
+    exit 0
+)
+prefix = bash

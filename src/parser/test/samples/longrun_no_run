@@ -1,0 +1,5 @@
+name = foo
+type = longrun
+
+[options]
+dependencies = [ foo ]
