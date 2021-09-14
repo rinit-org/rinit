@@ -7,9 +7,9 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 async-pidfd = "0.1.4"
-clap = "3.0.0-beta.2"
+clap = "3.0.0-beta.4"
 libc = "0.2"
-nix = "0.21"
+nix = "0.22"
 polling = "2.0"
 xdg = "2.1"
 
