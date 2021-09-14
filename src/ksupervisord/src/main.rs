@@ -69,7 +69,7 @@ fn spawn_svc(configdir: &str) -> PidFd {
 }
 
 pub fn main() -> Result<()> {
-    let opts = Opts::try_parse()?;
+    let opts = Opts::parse();
 
     let uid = unsafe { libc::getuid() };
     let configdir = if let Some(configdir) = opts.configdir {
