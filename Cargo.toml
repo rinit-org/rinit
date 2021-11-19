@@ -6,4 +6,5 @@ members = [
     "src/ksupervisord",
     "src/ks-svc",
     "src/parser",
+    "src/ks-run",
 ]
