@@ -188,4 +188,8 @@ impl Config {
             system: false,
         })
     }
+
+    pub fn get_graph_filename(&self) -> PathBuf {
+        self.datadir.as_ref().unwrap().join("graph.data")
+    }
 }
