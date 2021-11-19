@@ -20,7 +20,7 @@ use anyhow::{
     Result,
 };
 use async_pidfd::PidFd;
-use clap::Clap;
+use clap::Parser;
 use libc::{
     c_char,
     SIGKILL,
@@ -42,7 +42,7 @@ use polling::{
 };
 use xdg::BaseDirectories;
 
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(version = "0.1.0", author = "Danilo Spinella <oss@danyspin97.org>")]
 struct Opts {
     #[clap(long)]
