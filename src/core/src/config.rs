@@ -30,6 +30,8 @@ pub struct Config {
     pub datadir: Option<PathBuf>,
     pub service_directories: Vec<PathBuf>,
     pub profile_name: Option<String>,
+    #[serde(skip)]
+    pub system: bool,
 }
 
 #[derive(Debug, Snafu)]
@@ -142,6 +144,7 @@ impl Config {
                 PathBuf::from("/usr/share/kansei/service"),
             ],
             profile_name: None,
+            system: true,
         }
     }
 
@@ -162,6 +165,7 @@ impl Config {
                 PathBuf::from("/usr/share/kansei/service"),
             ],
             profile_name: None,
+            system: false,
         })
     }
 }
