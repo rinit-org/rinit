@@ -46,6 +46,8 @@ pub enum ParseServiceError {
     TypeNotFound { path: PathBuf },
 }
 
+unsafe impl Send for ParseServiceError {}
+
 type Result<T, E = ParseServiceError> = std::result::Result<T, E>;
 
 macro_rules! read_key_value {
