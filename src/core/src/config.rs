@@ -24,10 +24,11 @@ static DEFAULT_CONFIG_PLACEHOLDER: &str = "%%default_config%%";
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub path: Option<String>,
-    pub configdir: Option<String>,
-    pub rundir: Option<String>,
-    pub service_directories: Vec<String>,
+    pub path: Option<PathBuf>,
+    pub configdir: Option<PathBuf>,
+    pub rundir: Option<PathBuf>,
+    pub datadir: Option<PathBuf>,
+    pub service_directories: Vec<PathBuf>,
     pub profile_name: Option<String>,
 }
 
@@ -47,8 +48,8 @@ pub enum ConfigError {
         config_path: PathBuf,
         source: toml::de::Error,
     },
-    #[snafu(display("unable to convert path {:?} to string", path))]
-    PathStringError { path: PathBuf },
+    #[snafu(display("unable to convert {:?} to string", path))]
+    StringConversionError { path: PathBuf },
 }
 
 type Result<T, E = ConfigError> = std::result::Result<T, E>;
@@ -114,15 +115,9 @@ impl Config {
         let new_arr = config
             .service_directories
             .into_iter()
-            .map(|dir| -> Result<String> {
-                Ok(if dir.as_str() == DEFAULT_CONFIG_PLACEHOLDER {
-                    Path::new(&configdir)
-                        .join("service")
-                        .to_str()
-                        // We are converting a string to a path and back, it back
-                        .or_else(|| unreachable!())
-                        .unwrap()
-                        .to_string()
+            .map(|dir| -> Result<PathBuf> {
+                Ok(if dir.as_os_str() == DEFAULT_CONFIG_PLACEHOLDER {
+                    configdir.join("service")
                 } else {
                     dir
                 })
@@ -136,12 +131,15 @@ impl Config {
 
     fn new_default_config() -> Self {
         Config {
-            path: Some(env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string())),
-            configdir: Some("/etc/kansei".to_string()),
-            rundir: Some("/run/kansei".to_string()),
+            path: Some(PathBuf::from(
+                env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string()),
+            )),
+            configdir: Some(PathBuf::from("/etc/kansei")),
+            rundir: Some(PathBuf::from("/run/kansei")),
+            datadir: Some(PathBuf::from("/var/lib/kansei")),
             service_directories: vec![
-                "/etc/kansei/service".to_string(),
-                "/usr/share/kansei/service".to_string(),
+                PathBuf::from("/etc/kansei/service"),
+                PathBuf::from("/usr/share/kansei/service"),
             ],
             profile_name: None,
         }
@@ -149,32 +147,19 @@ impl Config {
 
     fn new_user_config(xdg: &BaseDirectories) -> Result<Self> {
         Ok(Config {
-            path: Some(env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string())),
-            configdir: {
-                Some(
-                    xdg.get_config_home()
-                        .to_str()
-                        .ok_or(ConfigError::PathStringError {
-                            path: xdg.get_config_home(),
-                        })?
-                        .to_string(),
-                )
-            },
-            rundir: {
-                Some(
-                    xdg.place_runtime_file(".")
-                        .unwrap()
-                        .to_str()
-                        .ok_or(ConfigError::PathStringError {
-                            // FIXME: get_runtime_dir
-                            path: xdg.get_config_home(),
-                        })?
-                        .to_string(),
-                )
-            },
+            path: Some(PathBuf::from(
+                env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string()),
+            )),
+            configdir: { Some(xdg.get_config_home()) },
+            rundir: Some(
+                xdg.get_runtime_directory()
+                    .context(BaseDirectoriesError {})?
+                    .to_path_buf(),
+            ),
+            datadir: { Some(xdg.get_data_home()) },
             service_directories: vec![
-                DEFAULT_CONFIG_PLACEHOLDER.to_string(),
-                "/usr/share/kansei/service".to_string(),
+                PathBuf::from(DEFAULT_CONFIG_PLACEHOLDER),
+                PathBuf::from("/usr/share/kansei/service"),
             ],
             profile_name: None,
         })
