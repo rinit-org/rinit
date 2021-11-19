@@ -69,6 +69,9 @@ impl Config {
         if config.rundir.is_some() {
             self.rundir = config.rundir;
         }
+        if config.datadir.is_some() {
+            self.datadir = config.datadir;
+        }
         if !config.service_directories.is_empty() {
             self.service_directories = config.service_directories;
         }
