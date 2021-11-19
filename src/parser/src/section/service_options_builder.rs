@@ -23,17 +23,22 @@ impl ServiceOptionsBuilder {
 impl SectionBuilder for ServiceOptionsBuilder {
     fn build(
         &mut self,
-        _values: &mut HashMap<&'static str, String>,
+        values: &mut HashMap<&'static str, String>,
         array_values: &mut HashMap<&'static str, Vec<String>>,
         _code_values: &mut HashMap<&'static str, String>,
     ) {
         let dependencies = array_values.remove("dependencies").unwrap_or_default();
         let requires = array_values.remove("requires").unwrap_or_default();
         let requires_one = array_values.remove("requires-one").unwrap_or_default();
+        // TODO: return error when auto-start is != yes and != no
+        let auto_start = values
+            .remove("auto-start")
+            .map_or(true, |value| value != "no");
         self.options = Some(Ok(ServiceOptions {
             dependencies,
             requires,
             requires_one,
+            auto_start,
         }));
     }
 

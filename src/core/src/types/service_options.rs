@@ -9,6 +9,7 @@ pub struct ServiceOptions {
     pub dependencies: Vec<String>,
     pub requires: Vec<String>,
     pub requires_one: Vec<String>,
+    pub auto_start: bool,
 }
 
 impl ServiceOptions {
@@ -17,6 +18,7 @@ impl ServiceOptions {
             dependencies: Vec::new(),
             requires: Vec::new(),
             requires_one: Vec::new(),
+            auto_start: true,
         }
     }
 }
