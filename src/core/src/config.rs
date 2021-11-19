@@ -40,6 +40,8 @@ pub enum ConfigError {
     BaseDirectoriesError { source: xdg::BaseDirectoriesError },
     #[snafu(display("unable to find configuration directory {:?}", configdir))]
     ConfigDirNotFound { configdir: PathBuf },
+    #[snafu(display("unable to find configuration file {:?}", config_file))]
+    ConfigFileNotFound { config_file: PathBuf },
     #[snafu(display("unable to read configuration file {:?}: {}", config_path, source))]
     ConfigReadError {
         config_path: PathBuf,
@@ -75,41 +77,56 @@ impl Config {
         }
     }
 
-    pub fn new(configdir: Option<String>) -> Result<Self> {
+    pub fn new(opts_configdir: Option<String>) -> Result<Self> {
         let uid = unsafe { libc::getuid() };
+        let xdg: BaseDirectories =
+            BaseDirectories::with_prefix("kansei").context(BaseDirectoriesError {})?;
 
-        let mut config = if !Path::new("kansei.conf").exists() && configdir.is_none() {
-            if uid == 0 {
-                Self::new_default_config()
-            } else {
-                let xdg: BaseDirectories =
-                    BaseDirectories::with_prefix("kansei").context(BaseDirectoriesError {})?;
-
-                Self::new_user_config(&xdg)?
-            }
-            // Merge the config read from the default locations
+        let mut config = if uid == 0 {
+            Self::new_default_config()
         } else {
-            let config_path = if let Some(configdir) = &configdir {
-                let configdir = Path::new(configdir);
-                ensure!(configdir.exists(), ConfigDirNotFound { configdir });
-                // if !configdir.is_dir() {
-                //     bail!("path {:?} is not a directory", configdir);
-                // }
-                configdir.join("kansei.conf")
-            } else {
-                Path::new("kansei.conf").to_path_buf()
-            };
-            toml::from_str(&fs::read_to_string(&config_path).with_context(|| {
-                ConfigReadError {
-                    config_path: config_path.clone(),
-                }
-            })?)
-            .with_context(|| {
-                ConfigFormatError {
-                    config_path: config_path.clone(),
-                }
-            })?
+            Self::new_user_config(&xdg)?
         };
+
+        // Merge the config read from the default locations
+        let configdir = if let Some(configdir) = &opts_configdir {
+            configdir.to_owned()
+        } else if uid == 0 {
+            "/etc/kansei".to_string()
+        } else {
+            xdg.get_config_home()
+                .to_str()
+                .ok_or(ConfigError::StringConversionError {
+                    path: xdg.get_config_home(),
+                })?
+                .to_string()
+        };
+        let configdir = Path::new(&configdir);
+        ensure!(
+            opts_configdir.is_none() || configdir.exists(),
+            ConfigDirNotFound { configdir }
+        );
+        let config_path = configdir.join("kansei.conf");
+        ensure!(
+            opts_configdir.is_none() || config_path.exists(),
+            ConfigFileNotFound {
+                config_file: config_path
+            }
+        );
+        if config_path.exists() {
+            let config_from_file =
+                toml::from_str(&fs::read_to_string(&config_path).with_context(|| {
+                    ConfigReadError {
+                        config_path: config_path.clone(),
+                    }
+                })?)
+                .with_context(|| {
+                    ConfigFormatError {
+                        config_path: config_path.clone(),
+                    }
+                })?;
+            config.merge(config_from_file);
+        }
 
         // replace configdir placeholder with actual config dir
         // the user might avoid hard writing the configdir
