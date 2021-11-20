@@ -544,7 +544,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kctl"
+name = "ks-ctl"
 version = "0.1.0"
 dependencies = [
  "anyhow",

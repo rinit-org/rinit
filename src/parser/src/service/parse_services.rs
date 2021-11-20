@@ -30,6 +30,7 @@ pub enum ServicesParserError {
 }
 
 unsafe impl Send for ServicesParserError {}
+unsafe impl Sync for ServicesParserError {}
 
 pub async fn parse_services(
     services: Vec<String>,

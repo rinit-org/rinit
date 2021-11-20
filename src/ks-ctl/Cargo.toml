@@ -1,5 +1,5 @@
 [package]
-name = "kctl"
+name = "ks-ctl"
 version = "0.1.0"
 authors = ["Danilo Spinella <oss@danyspin97.org>"]
 edition = "2018"
