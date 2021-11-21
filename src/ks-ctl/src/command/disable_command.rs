@@ -1,11 +1,4 @@
-use std::{
-    fs,
-    io,
-    path::{
-        Path,
-        PathBuf,
-    },
-};
+use std::fs;
 
 use anyhow::{
     ensure,
@@ -13,10 +6,7 @@ use anyhow::{
     Result,
 };
 use clap::Parser;
-use kansei_core::graph::{
-    DependencyGraph,
-    DependencyGraphError,
-};
+use kansei_core::graph::DependencyGraph;
 
 use crate::Config;
 

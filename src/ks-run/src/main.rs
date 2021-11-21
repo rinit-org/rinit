@@ -19,7 +19,6 @@ use std::{
 };
 
 use anyhow::{
-    bail,
     ensure,
     Context,
     Result,
@@ -27,7 +26,6 @@ use anyhow::{
 use async_std::future;
 use kansei_core::types::{
     Script,
-    ScriptConfig,
     ScriptPrefix,
 };
 use libc::{
@@ -75,7 +73,7 @@ pub enum ScriptResult {
 
 pub async fn run<'a>(
     script: &Script,
-    notify: RawFd,
+    _notify: RawFd,
     should_run: &AtomicBool,
 ) -> Result<bool> {
     let mut time_tried = 0;
@@ -175,17 +173,11 @@ async fn check_exit(pid: Pid) -> Result<ScriptResult> {
         | WaitStatus::StillAlive => unreachable!(),
     })
 }
-async fn kill_gracefully(child: Pid) {}
+async fn kill_gracefully(_child: Pid) {
+    todo!()
+}
 
 fn kill() {
-    todo!()
-}
-
-fn group_to_gid(group: &str) -> u32 {
-    todo!()
-}
-
-fn user_to_uid(user: &str) -> u32 {
     todo!()
 }
 

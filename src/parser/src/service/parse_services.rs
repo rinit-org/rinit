@@ -1,15 +1,9 @@
-use std::{
-    error::Error,
-    path::{
-        Path,
-        PathBuf,
-    },
+use std::path::{
+    Path,
+    PathBuf,
 };
 
-use futures::{
-    future::BoxFuture,
-    Future,
-};
+use futures::future::BoxFuture;
 use kansei_core::types::Service;
 use snafu::{
     ResultExt,

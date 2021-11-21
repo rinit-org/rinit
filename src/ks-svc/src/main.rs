@@ -3,10 +3,7 @@
 mod live_service;
 mod live_service_graph;
 
-use std::{
-    env,
-    fs,
-};
+use std::fs;
 
 use anyhow::{
     Context,
