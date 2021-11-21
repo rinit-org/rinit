@@ -5,12 +5,16 @@ use anyhow::{
     Result,
 };
 use clap::Parser;
-use command::EnableCommand;
+use command::{
+    DisableCommand,
+    EnableCommand,
+};
 use kansei_core::config::Config;
 
 #[derive(Parser)]
 enum Command {
     Enable(EnableCommand),
+    Disable(DisableCommand),
 }
 
 #[derive(Parser)]
@@ -26,6 +30,7 @@ async fn main() -> Result<()> {
 
     match opts.subcmd {
         Command::Enable(enable_command) => enable_command.run(config).await?,
+        Command::Disable(disable_command) => disable_command.run(config).await?,
     }
 
     Ok(())
