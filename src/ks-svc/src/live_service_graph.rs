@@ -10,13 +10,17 @@ use async_std::{
         RwLockWriteGuard,
     },
 };
-use kansei_core::graph::DependencyGraph;
+use kansei_core::{
+    graph::DependencyGraph,
+    types::Service,
+};
 
 use crate::{
     live_service::{
         LiveService,
         ServiceStatus,
     },
+    longrun_runner::LongrunRunner,
     oneshot_runner::OneshotRunner,
 };
 
@@ -45,23 +49,21 @@ impl LiveServiceGraph {
     pub async fn start_all_services(&self) {
         stream::from_iter(self.live_services.read().await.iter()).map(async move |live_service| {
             if live_service.read().await.node.service.should_start() {
-                self.start_service_impl(&mut live_service.write().await)
-                    .await;
+                self.start_service(&mut live_service.write().await).await;
             }
         });
     }
 
-    async fn start_service_impl(
+    async fn start_service(
         &self,
         live_service: &mut RwLockWriteGuard<'_, LiveService>,
     ) {
         live_service.change_status(ServiceStatus::Up);
-        OneshotRunner::run(&live_service.node.service);
-    }
-
-    pub fn start_service(
-        &self,
-        name: String,
-    ) {
+        match &live_service.node.service {
+            Service::Oneshot(oneshot) => OneshotRunner::run(oneshot),
+            Service::Longrun(longrun) => LongrunRunner::run(longrun),
+            Service::Bundle(_) => {}
+            Service::Virtual(_) => {}
+        }
     }
 }

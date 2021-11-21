@@ -3,6 +3,7 @@
 mod exec_args;
 mod live_service;
 mod live_service_graph;
+mod longrun_runner;
 mod oneshot_runner;
 mod script_runner;
 
@@ -35,7 +36,7 @@ async fn main() -> Result<()> {
 
     let live_graph = LiveServiceGraph::new(graph)?;
     task::spawn(async move {
-        live_graph.start_all_services();
+        live_graph.start_all_services().await;
     });
 
     loop {
