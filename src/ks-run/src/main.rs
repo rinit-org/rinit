@@ -57,7 +57,9 @@ use nix::{
         fork,
         pipe2,
         ForkResult,
+        Group,
         Pid,
+        User,
     },
 };
 use polling::{
@@ -91,6 +93,7 @@ pub async fn run<'a>(
         }
     })
 }
+
 async fn run_impl(script: &Script) -> Result<ScriptResult> {
     let timeout = Duration::from_millis(script.timeout.into());
     let p1 = pipe2(OFlag::O_CLOEXEC)?;
@@ -129,10 +132,22 @@ async fn run_impl(script: &Script) -> Result<ScriptResult> {
             // TODO: Use a proper splitting function
             cmd.args(script.execute.split_whitespace().skip(1));
             if let Some(user) = &script.user {
-                cmd.uid(user_to_uid(user));
+                cmd.uid(
+                    User::from_name(user)
+                        .with_context(|| format!("unable to get UID for user {}", user))?
+                        .with_context(|| format!("unable to find UID for user {}", user))?
+                        .uid
+                        .as_raw(),
+                );
             }
             if let Some(group) = &script.group {
-                cmd.gid(group_to_gid(group));
+                cmd.gid(
+                    Group::from_name(group)
+                        .with_context(|| format!("unable to get GID for group {}", group))?
+                        .with_context(|| format!("unable to find GID for group {}", group))?
+                        .gid
+                        .as_raw(),
+                );
             }
             unsafe {
                 cmd.pre_exec(move || -> Result<(), std::io::Error> {
