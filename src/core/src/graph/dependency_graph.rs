@@ -9,6 +9,7 @@ use serde::{
 };
 use snafu::{
     ensure,
+    OptionExt,
     Snafu,
 };
 
@@ -23,6 +24,8 @@ pub enum DependencyGraphError {
     DependenciesUnfulfilledError { service: String, dependency: String },
     #[snafu(display("found a cycle in the dependency graph"))]
     CycleFoundError,
+    #[snafu(display("service {} is not enabled", service))]
+    ServiceNotEnabled { service: String },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -221,14 +224,20 @@ impl DependencyGraph {
     pub fn remove_services(
         &mut self,
         services: Vec<String>,
-    ) {
-        services.iter().for_each(|service| {
+    ) -> Result<()> {
+        services.iter().try_for_each(|service| -> Result<()> {
+            let node_index = *self
+                .nodes_index
+                .get(service)
+                .context(ServiceNotEnabled { service })?;
             let node_index = self.get_index_from_name(service);
             self.enabled_services.remove(&node_index);
             if !self.is_node_required(node_index) {
                 self.remove_node(node_index);
             }
-        });
+
+            Ok(())
+        })
     }
 
     fn remove_node(
