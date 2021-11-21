@@ -15,13 +15,9 @@ use kansei_core::{
     types::Service,
 };
 
-use crate::{
-    live_service::{
-        LiveService,
-        ServiceStatus,
-    },
-    longrun_runner::LongrunRunner,
-    oneshot_runner::OneshotRunner,
+use crate::live_service::{
+    LiveService,
+    ServiceStatus,
 };
 
 pub struct LiveServiceGraph {
@@ -59,11 +55,17 @@ impl LiveServiceGraph {
         live_service: &mut RwLockWriteGuard<'_, LiveService>,
     ) {
         live_service.change_status(ServiceStatus::Up);
-        match &live_service.node.service {
-            Service::Oneshot(oneshot) => OneshotRunner::run(oneshot),
-            Service::Longrun(longrun) => LongrunRunner::run(longrun),
-            Service::Bundle(_) => {}
-            Service::Virtual(_) => {}
+        let exe = match &live_service.node.service {
+            Service::Oneshot(_) => Some("ks-run-oneshot"),
+            Service::Longrun(_) => Some("ks-run-longrun"),
+            Service::Bundle(_) => None,
+            Service::Virtual(_) => None,
+        };
+        if let Some(exe) = exe {
+            Command::new(exe)
+                .stdin(Stdio::null())
+                .stdout(Stdio::inherit())
+                .spawn();
         }
     }
 }
