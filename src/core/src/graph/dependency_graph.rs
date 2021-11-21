@@ -416,7 +416,7 @@ mod test {
             )
             .unwrap();
 
-        graph.remove_services(vec!["foo".to_string()]);
+        graph.remove_services(vec!["foo".to_string()]).unwrap();
         assert_eq!(graph.nodes.len(), 0);
     }
 
@@ -438,7 +438,7 @@ mod test {
             )
             .unwrap();
 
-        graph.remove_services(vec!["foo".to_string()]);
+        graph.remove_services(vec!["foo".to_string()]).unwrap();
         assert_eq!(graph.nodes.len(), 0);
     }
 }

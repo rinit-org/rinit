@@ -125,7 +125,7 @@ mod tests {
     fn parse_empty_array() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
         let res = parser.start_parsing("key = [ ]")?;
-        assert_eq!(res, true);
+        assert!(res);
         assert_eq!(parser.values, Vec::<String>::new());
         assert!(!parser.is_parsing);
         Ok(())
@@ -135,7 +135,7 @@ mod tests {
     fn parse_one_line_array() -> Result<(), ArrayParserError> {
         let mut parser = ArrayParser::new();
         let res = parser.start_parsing("key = [ value1 value2 ]")?;
-        assert_eq!(res, true);
+        assert!(res);
 
         assert_eq!(parser.key, "key");
         assert!(!parser.is_parsing);

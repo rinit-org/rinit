@@ -88,12 +88,13 @@ impl LiveServiceGraph {
                     .unwrap()
                     .upgradable_read()
                     .await;
-                if {
+                let res = {
                     let status = dep_service.status.lock().await;
                     *status != ServiceStatus::Up
                         && *status != ServiceStatus::Starting
                         && *status != ServiceStatus::Stopping
-                } {
+                };
+                if res {
                     self.start_service(&mut RwLockUpgradableReadGuard::upgrade(dep_service).await)
                         .await;
                 }
@@ -141,7 +142,7 @@ impl LiveServiceGraph {
                     .unwrap()
                     .read()
                     .await;
-                dep_service.wait_on_status().await.clone()
+                dep_service.wait_on_status().await
             })
             .collect();
 

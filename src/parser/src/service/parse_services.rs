@@ -28,7 +28,7 @@ unsafe impl Sync for ServicesParserError {}
 
 pub async fn parse_services(
     services: Vec<String>,
-    service_dirs: &Vec<PathBuf>,
+    service_dirs: &[PathBuf],
     system: bool,
 ) -> Result<Vec<Service>, ServicesParserError> {
     let mut services_already_parsed = services.clone();
@@ -58,7 +58,7 @@ pub async fn parse_services(
             dependencies
                 .iter()
                 // Skip services that we can't found, the dependency graph will handle the error
-                .filter_map(|service| get_service_file(&service, service_dirs, system))
+                .filter_map(|service| get_service_file(service, service_dirs, system))
                 .map(parse_service_future),
         );
 
@@ -76,7 +76,7 @@ fn parse_service_future(
 
 fn get_service_file(
     service: &str,
-    paths: &Vec<PathBuf>,
+    paths: &[PathBuf],
     system: bool,
 ) -> Option<PathBuf> {
     paths.iter().find_map(|path| {

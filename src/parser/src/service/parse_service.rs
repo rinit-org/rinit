@@ -168,7 +168,7 @@ mod test {
                 }
             }),
             task::block_on(parse_service(
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/bundle")
                     .as_path()
             ))?
@@ -195,7 +195,7 @@ mod test {
                 options: ServiceOptions::new(),
             }),
             task::block_on(parse_service(
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/oneshot")
                     .as_path()
             ))?
@@ -214,7 +214,7 @@ mod test {
                 options: ServiceOptions::new(),
             }),
             task::block_on(parse_service(
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/oneshot_with_stop")
                     .as_path()
             ))?
@@ -233,7 +233,7 @@ mod test {
                 options: ServiceOptions::new(),
             }),
             task::block_on(parse_service(
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/longrun")
                     .as_path()
             ))?
@@ -246,7 +246,7 @@ mod test {
     fn parse_longrun_no_run() {
         assert!(
             task::block_on(parse_service(
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/longrun_no_run")
                     .as_path()
             ))
