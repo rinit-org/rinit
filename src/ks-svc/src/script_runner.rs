@@ -27,8 +27,6 @@ use nix::{
     },
 };
 
-use crate::exec_args::ExecArgs;
-
 pub enum ScriptResult {
     Exited(u8),
     KilledBySignal(Signal),
