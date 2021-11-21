@@ -1,9 +1,9 @@
-use kansei_core::types::Oneshot;
+use kansei_core::types::Longrun;
 
-pub struct OneshotRunner {
-    oneshot: Oneshot,
+pub struct LongrunRunner {
+    longrun: Longrun,
 }
 
-impl OneshotRunner {
-    pub fn run(oneshot: &Oneshot) {}
+impl LongrunRunner {
+    pub fn run(longrun: &Longrun) {}
 }
