@@ -26,18 +26,18 @@ use crate::service::service_builder::*;
 
 #[derive(Snafu, Debug)]
 pub enum ParseServiceError {
-    #[snafu(display("unable to open file {:?}: {}", path, source))]
+    #[snafu(display("unable to open file {:?}", path))]
     OpenFile { path: PathBuf, source: io::Error },
-    #[snafu(display("unable to read line from file {:?}: {}", path, source))]
+    #[snafu(display("unable to read line from file {:?}", path))]
     ReadFile { path: PathBuf, source: io::Error },
     #[snafu(display("unable to read the name of service in file {:?} at line 1", path))]
     NameNotFound { path: PathBuf },
-    #[snafu(display("unable to create service from file {:?}: {}", path, source))]
+    #[snafu(display("while reading file {:?}", path))]
     ServiceParse {
         path: PathBuf,
         source: ServiceBuilderError,
     },
-    #[snafu(display("unable to read service in file {:?}: {}", path, source))]
+    #[snafu(display("whiile reading file {:?}", path))]
     ServiceBuild {
         path: PathBuf,
         source: Box<dyn Error>,

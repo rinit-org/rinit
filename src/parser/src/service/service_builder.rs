@@ -29,7 +29,7 @@ use crate::{
 pub enum ServiceBuilderError {
     #[snafu(display("cannot find any section"))]
     EmptyService,
-    #[snafu(display("error in section {}: {}", section, source))]
+    #[snafu(display("error in section {}", section))]
     ErrorInSection {
         section: String,
         source: SectionBuilderError,

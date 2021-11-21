@@ -23,7 +23,7 @@ use crate::{
 
 #[derive(Snafu, Debug)]
 pub enum ServicesParserError {
-    #[snafu(display("error while parsing service, {}", source))]
+    #[snafu(display("unable to parse service"))]
     ParsingServiceError { source: ParseServiceError },
     #[snafu(display("could not find service file for {:?}", service))]
     CouldNotFindService { service: String },

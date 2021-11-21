@@ -36,18 +36,18 @@ pub struct Config {
 
 #[derive(Debug, Snafu)]
 pub enum ConfigError {
-    #[snafu(display("unable to initialize XDG BaseDirectories: {}", source))]
+    #[snafu(display("unable to initialize XDG BaseDirectories"))]
     BaseDirectoriesError { source: xdg::BaseDirectoriesError },
     #[snafu(display("unable to find configuration directory {:?}", configdir))]
     ConfigDirNotFound { configdir: PathBuf },
     #[snafu(display("unable to find configuration file {:?}", config_file))]
     ConfigFileNotFound { config_file: PathBuf },
-    #[snafu(display("unable to read configuration file {:?}: {}", config_path, source))]
+    #[snafu(display("unable to read configuration file {:?}", config_path))]
     ConfigReadError {
         config_path: PathBuf,
         source: io::Error,
     },
-    #[snafu(display("unable to parse configuration file {:?}: {}", config_path, source))]
+    #[snafu(display("unable to parse configuration file {:?}", config_path))]
     ConfigFormatError {
         config_path: PathBuf,
         source: toml::de::Error,

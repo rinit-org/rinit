@@ -24,11 +24,11 @@ pub enum ScriptBuilderError {
     NoPrefixFound,
     #[snafu(display("{} must be either 'yes' or 'no'", key))]
     InvalidBoolean { key: String },
-    #[snafu(display("failed conversion to integer for key {}: {}", key, source))]
+    #[snafu(display("failed conversion to integer for key {}", key))]
     InvalidInteger { key: String, source: ParseIntError },
     #[snafu(display("{}", source))]
     InvalidPrefix { source: InvalidScriptPrefixError },
-    #[snafu(display("invalid signal: {}", source))]
+    #[snafu(display("invalid signal"))]
     InvalidSignal { source: nix::Error },
     #[snafu(display("no execute found"))]
     NoExecuteFound,

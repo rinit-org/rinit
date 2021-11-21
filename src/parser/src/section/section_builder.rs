@@ -18,7 +18,7 @@ use crate::{
 
 #[derive(Snafu, Debug, PartialEq)]
 pub enum SectionBuilderError {
-    #[snafu(display("encountered an error while parsing the field {}: {}", field, source))]
+    #[snafu(display("encountered an error while parsing the field {}", field))]
     ArrayParserError {
         field: String,
         source: crate::ArrayParserError,
@@ -27,7 +27,7 @@ pub enum SectionBuilderError {
     ArrayWithDuplicates { duplicates: Vec<String> },
     #[snafu(display("field {} has not been closed", field))]
     ArrayNotClosed { field: String },
-    #[snafu(display("error while parsing code: {}", source))]
+    #[snafu(display("error while parsing code"))]
     CodeParserError {
         source: crate::code_parser::CodeParserError,
     },
