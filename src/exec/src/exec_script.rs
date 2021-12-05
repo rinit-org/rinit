@@ -1,15 +1,3 @@
-use std::{
-    os::{
-        linux::process::{
-            ChildExt,
-            CommandExt as LinuxCommandExt,
-            PidFd,
-        },
-        unix::process::CommandExt,
-    },
-    process::Command,
-};
-
 use anyhow::{
     Context,
     Result,
@@ -38,24 +26,31 @@ use nix::{
         User,
     },
 };
+use tokio::process::{
+    Child,
+    Command,
+};
 
-pub async fn exec_script(script: &Script) -> Result<PidFd> {
-    let p1 = pipe2(OFlag::O_CLOEXEC)?;
+pub async fn exec_script(script: &Script) -> Result<Child> {
+    let p1 = pipe2(OFlag::O_CLOEXEC).context("unable to create pipe")?;
     let p2 = pipe2(OFlag::O_CLOEXEC)?;
-    let mut cmd = Command::new(match &script.prefix {
-        ScriptPrefix::Bash => "bash",
+    let (exe, args) = match &script.prefix {
+        ScriptPrefix::Bash => ("bash", vec!["-c", &script.execute]),
         ScriptPrefix::Path => {
-            script
-                .execute
-                .split_whitespace()
-                .next()
-                .filter(|word| word.chars().all(char::is_alphabetic))
-                .unwrap_or("")
+            let mut split = script.execute.split_whitespace().peekable();
+            (
+                split
+                    .next()
+                    .filter(|word| word.chars().all(char::is_alphabetic))
+                    .unwrap_or(&""),
+                split.collect(),
+            )
         }
-        ScriptPrefix::Sh => "sh",
-    });
+        ScriptPrefix::Sh => ("sh", vec!["-c", &script.execute]),
+    };
+    let mut cmd = Command::new(&exe);
     // TODO: Use a proper splitting function
-    cmd.args(script.execute.split_whitespace().skip(1));
+    cmd.args(args);
     if let Some(user) = &script.user {
         cmd.uid(
             User::from_name(user)
@@ -74,7 +69,7 @@ pub async fn exec_script(script: &Script) -> Result<PidFd> {
                 .as_raw(),
         );
     }
-    let mut child = unsafe {
+    let child = unsafe {
         cmd.pre_exec(move || -> Result<(), std::io::Error> {
             // Close fds
             close(STDIN_FILENO)
@@ -93,9 +88,8 @@ pub async fn exec_script(script: &Script) -> Result<PidFd> {
             mask.thread_unblock().map_err(|err| err.into())
         })
     }
-    .create_pidfd(true)
     .spawn()
     .context("unable to spawn script")?;
 
-    Ok(child.take_pidfd().context("unable to take pidfd")?)
+    Ok(child)
 }
