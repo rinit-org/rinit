@@ -70,7 +70,8 @@ mod test {
         assert!(
             builder
                 .parse_until_next_section(&["contents = [ foo ]".to_string()])
-                .unwrap().is_empty()
+                .unwrap()
+                .is_empty()
         );
 
         let bundle_options = builder.bundle_options.unwrap().unwrap();
