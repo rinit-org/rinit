@@ -7,4 +7,5 @@ members = [
     "src/ks-svc",
     "src/parser",
     "src/exec",
+    "src/ks-run-oneshot",
 ]
