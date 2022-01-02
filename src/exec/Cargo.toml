@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 kansei-core = { path = "../core" }
-anyhow = "1.0.51"
-libc = "0.2.109"
-nix = "0.23.0"
-tokio = { version = "1.14.0", features = ["full"] }
+anyhow = "1.0.52"
+libc = "0.2.112"
+nix = "0.23.1"
+tokio = { version = "1.15.0", features = ["full"] }
