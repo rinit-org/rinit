@@ -598,6 +598,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ks-run-longrun"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-pidfd",
+ "bincode",
+ "kansei-core",
+ "kansei-exec",
+ "lazy_static",
+ "tokio",
+]
+
+[[package]]
 name = "ks-run-oneshot"
 version = "0.1.0"
 dependencies = [
