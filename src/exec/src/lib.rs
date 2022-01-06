@@ -1,10 +1,15 @@
 pub mod exec_script;
 pub mod pidfd_send_signal;
+pub mod signal_wait;
+
+#[macro_use]
+extern crate lazy_static;
 
 use std::io;
 
 pub use exec_script::exec_script;
 pub use pidfd_send_signal::pidfd_send_signal;
+pub use signal_wait::signal_wait;
 
 fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
     if ret == -1 {

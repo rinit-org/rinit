@@ -567,6 +567,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "kansei-core",
+ "lazy_static",
  "libc",
  "nix",
  "tokio",

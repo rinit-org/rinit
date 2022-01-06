@@ -18,28 +18,15 @@ use kansei_core::types::Script;
 use kansei_exec::{
     exec_script,
     pidfd_send_signal,
+    signal_wait,
 };
 use tokio::{
     fs,
     io::unix::AsyncFd,
     select,
-    signal::unix::{
-        signal,
-        Signal,
-        SignalKind,
-    },
-    sync::Mutex,
     task::JoinError,
     time::timeout,
 };
-
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
-    static ref SIGINT: Mutex<Signal> = Mutex::new(signal(SignalKind::interrupt()).unwrap());
-    static ref SIGTERM: Mutex<Signal> = Mutex::new(signal(SignalKind::terminate()).unwrap());
-}
 
 const SIGKILL: i32 = 9;
 
@@ -48,20 +35,6 @@ enum ScriptResult {
     Exited(ExitStatus),
     Running,
     SignalReceived,
-}
-
-fn signal_wait() -> Box<dyn FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>>
-{
-    Box::new(|| {
-        Box::pin(tokio::spawn(async {
-            let mut sigint = SIGINT.lock().await;
-            let mut sigterm = SIGTERM.lock().await;
-            select! {
-                _ = sigint.recv() => {},
-                _ = sigterm.recv() => {},
-            };
-        }))
-    })
 }
 
 async fn start_script<F>(
