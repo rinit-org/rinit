@@ -14,10 +14,14 @@ use anyhow::{
     Result,
 };
 use async_pidfd::PidFd;
-use kansei_core::types::Script;
+use kansei_core::types::{
+    Longrun,
+    Script,
+};
 use kansei_exec::{
     exec_script,
     pidfd_send_signal,
+    run_short_lived_script,
     signal_wait,
 };
 use tokio::{
@@ -109,20 +113,22 @@ where
 async fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
-    let script: Script = bincode::deserialize(&fs::read(args.next().unwrap()).await?)?;
-    let mut pidfd_opt = start_script(&script, signal_wait()).await?;
+    let longrun: Longrun = bincode::deserialize(&fs::read(args.next().unwrap()).await?)?;
+    let mut pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
 
     // TODO: notify SVC
 
     while let Some(pidfd) = &pidfd_opt {
-        let res = supervise(pidfd, &script, signal_wait()).await?;
+        let res = supervise(pidfd, &longrun.run, signal_wait()).await?;
 
         if res {
             // If the process has died, run finish script,
             // notify the SVC and run into the next loop cycle
             //to run start_script again
-            let finish_res = todo!();
-            pidfd_opt = start_script(&script, signal_wait()).await?;
+            if let Some(finish_script) = &longrun.finish {
+                let _ = run_short_lived_script(&finish_script, signal_wait());
+            }
+            pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
 
             // TODO: notify SVC
         } else {
