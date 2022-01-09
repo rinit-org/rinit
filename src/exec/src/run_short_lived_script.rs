@@ -30,18 +30,20 @@ enum ScriptResult {
     TimedOut,
 }
 
+type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
+
 pub async fn run_short_lived_script<F>(
     script: &Script,
     mut wait: F,
 ) -> Result<bool>
 where
-    F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
+    F: FnMut() -> WaitFn,
 {
     let script_timeout = Duration::from_millis(script.timeout as u64);
 
     let mut time_tried = 0;
     let success = loop {
-        let child = exec_script(&script)
+        let child = exec_script(script)
             .await
             .context("unable to execute script")?;
         let pidfd = AsyncFd::new(
@@ -67,21 +69,11 @@ where
                 }
             }
             ScriptResult::SignalReceived => {
-                kill_process(
-                    pidfd,
-                    script.timeout_kill.try_into()?,
-                    script.down_signal.try_into()?,
-                )
-                .await?;
+                kill_process(pidfd, script.timeout_kill, script.down_signal).await?;
                 break false;
             }
             ScriptResult::TimedOut => {
-                kill_process(
-                    pidfd,
-                    script.timeout_kill.try_into()?,
-                    script.down_signal.try_into()?,
-                )
-                .await?;
+                kill_process(pidfd, script.timeout_kill, script.down_signal).await?;
             }
         }
 

@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
                 // notify the SVC and run into the next loop cycle
                 //to run start_script again
                 if let Some(finish_script) = &longrun.finish {
-                    let _ = run_short_lived_script(&finish_script, signal_wait());
+                    let _ = run_short_lived_script(finish_script, signal_wait());
                 }
                 pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
 

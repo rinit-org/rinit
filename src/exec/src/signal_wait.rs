@@ -18,9 +18,9 @@ lazy_static! {
     static ref SIGINT: Mutex<Signal> = Mutex::new(signal(SignalKind::interrupt()).unwrap());
     static ref SIGTERM: Mutex<Signal> = Mutex::new(signal(SignalKind::terminate()).unwrap());
 }
+type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
 
-pub fn signal_wait()
--> Box<dyn FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>> {
+pub fn signal_wait() -> Box<dyn FnMut() -> WaitFn> {
     Box::new(|| {
         Box::pin(tokio::spawn(async {
             let mut sigint = SIGINT.lock().await;

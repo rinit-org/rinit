@@ -42,7 +42,7 @@ pub async fn exec_script(script: &Script) -> Result<Child> {
                 split
                     .next()
                     .filter(|word| word.chars().all(char::is_alphabetic))
-                    .unwrap_or(&""),
+                    .unwrap_or(""),
                 split.collect(),
             )
         }

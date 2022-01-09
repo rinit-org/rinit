@@ -33,8 +33,6 @@ async fn main() -> Result<()> {
     });
 
     loop {
-        break;
+        todo!();
     }
-
-    Ok(())
 }
