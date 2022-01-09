@@ -102,11 +102,16 @@ async fn supervise<F>(
     pidfd: &AsyncFd<PidFd>,
     script: &Script,
     mut wait: F,
-) -> Result<bool>
+) -> Result<ScriptResult>
 where
     F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
 {
-    todo!()
+    Ok(select! {
+        _ = pidfd.readable() => {
+            ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
+        }
+        _ = wait() => ScriptResult::SignalReceived
+    })
 }
 
 #[tokio::main]
@@ -121,19 +126,23 @@ async fn main() -> Result<()> {
     while let Some(pidfd) = &pidfd_opt {
         let res = supervise(pidfd, &longrun.run, signal_wait()).await?;
 
-        if res {
-            // If the process has died, run finish script,
-            // notify the SVC and run into the next loop cycle
-            //to run start_script again
-            if let Some(finish_script) = &longrun.finish {
-                let _ = run_short_lived_script(&finish_script, signal_wait());
-            }
-            pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
+        match res {
+            ScriptResult::Exited(_) => {
+                // If the process has died, run finish script,
+                // notify the SVC and run into the next loop cycle
+                //to run start_script again
+                if let Some(finish_script) = &longrun.finish {
+                    let _ = run_short_lived_script(&finish_script, signal_wait());
+                }
+                pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
 
-            // TODO: notify SVC
-        } else {
-            // Received signal => stop running
-            break;
+                // TODO: notify SVC
+            }
+            ScriptResult::SignalReceived => {
+                // stop running
+                break;
+            }
+            ScriptResult::Running => unreachable!(),
         }
     }
     // pidfd_opt == None => Received signal => stop running
