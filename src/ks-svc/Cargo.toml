@@ -8,7 +8,7 @@ edition = "2021"
 kansei-core = { path = "../core" }
 anyhow = "1.0.52"
 async-pidfd = "0.1.4"
-async-recursion = "0.3.2"
+async-recursion = "1.0.0"
 async-std = { version = "1.10.0", features = ["attributes", "unstable"] }
 bincode = "1.3.3"
 chrono = "0.4.19"
