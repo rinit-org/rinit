@@ -149,3 +149,61 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use kansei_core::types::ScriptPrefix;
+    use tokio::time::sleep;
+
+    use super::*;
+
+    macro_rules! wait {
+        ($time:literal) => {
+            || {
+                Box::pin(tokio::spawn(async {
+                    sleep(Duration::from_millis($time)).await;
+                }))
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn test_start_script() {
+        // sleep for 10ms
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        // wait for 1ms
+        script.timeout = 1;
+        let pidfd = start_script(&script, wait!(1000)).await.unwrap();
+        assert!(pidfd.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_start_script_failure() {
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
+        script.timeout = 5;
+        let pidfd = start_script(&script, wait!(1000)).await.unwrap();
+        assert!(pidfd.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_supervise() {
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        script.timeout = 1;
+        let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
+        assert!(matches!(
+            supervise(&pidfd, &script, wait!(1000)).await.unwrap(),
+            ScriptResult::Exited(..)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_supervise_signal() {
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        script.timeout = 1;
+        let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
+        assert!(matches!(
+            supervise(&pidfd, &script, wait!(1)).await.unwrap(),
+            ScriptResult::SignalReceived
+        ));
+    }
+}
