@@ -5,10 +5,10 @@ authors = ["Danilo Spinella <oss@danyspin97.org>"]
 edition = "2018"
 
 [dependencies]
-anyhow = "1.0.52"
+anyhow = "1.0.53"
 async-pidfd = "0.1.4"
-clap = { version = "3.0.5", features = ["derive"] }
-libc = "0.2.112"
+clap = { version = "3.0.10", features = ["derive"] }
+libc = "0.2.113"
 nix = "0.23.1"
 polling = "2.2.0"
 xdg = "2.4.0"
