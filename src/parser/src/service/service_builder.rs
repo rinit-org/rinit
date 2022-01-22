@@ -43,7 +43,7 @@ pub enum ServiceBuilderError {
 macro_rules! parse_sections{
     ($self:ident, $( $section:expr, $builder:expr ),*) => {
     fn parse(&mut $self, lines: &[String]) -> Result<(), ServiceBuilderError> {
-        use self::InvalidSection;
+        use self::InvalidSectionSnafu;
         let mut lines: &[String] = lines;
         let mut start = 0;
         let len = lines.len();
@@ -53,18 +53,18 @@ macro_rules! parse_sections{
             }
             start += 1;
         }
-        ensure!(len > start, EmptyService);
+        ensure!(len > start, EmptyServiceSnafu);
         lines = &lines[start..];
         loop {
-            let section = parse_section(&lines[0]).with_context(|| SectionHeaderNotFound)?;
+            let section = parse_section(&lines[0]).with_context(|| SectionHeaderNotFoundSnafu)?;
             lines = match section {
                 $(
                     $section => {
-                        $builder.parse_until_next_section(&lines[1..]).with_context(|| ErrorInSection { section: section.to_string() })?
+                        $builder.parse_until_next_section(&lines[1..]).with_context(|_| ErrorInSectionSnafu { section: section.to_string() })?
                     },
                 )*
 
-                _ => { return InvalidSection { section: section.to_string() }.fail(); }
+                _ => { return InvalidSectionSnafu { section: section.to_string() }.fail(); }
             };
 
             if lines.is_empty() {
@@ -158,7 +158,7 @@ impl ServiceBuilder for BundleBuilder {
             options: self
                 .options_builder
                 .bundle_options
-                .with_context(|| NoOptionsSection)??,
+                .with_context(|| NoOptionsSectionSnafu)??,
         }))
     }
 
@@ -172,7 +172,7 @@ impl ServiceBuilder for OneshotBuilder {
             start: self
                 .start_builder
                 .script
-                .with_context(|| NoStartSection)??,
+                .with_context(|| NoStartSectionSnafu)??,
             stop: if let Some(stop) = self.stop_builder.script {
                 Some(stop?)
             } else {
@@ -201,7 +201,7 @@ impl ServiceBuilder for LongrunBuilder {
     fn build(self) -> Result<Service, Box<dyn Error>> {
         Ok(Service::Longrun(Longrun {
             name: self.name,
-            run: self.run_builder.script.with_context(|| NoRunSection)??,
+            run: self.run_builder.script.with_context(|| NoRunSectionSnafu)??,
             finish: if let Some(finish) = self.finish_builder.script {
                 Some(finish?)
             } else {

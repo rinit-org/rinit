@@ -9,6 +9,6 @@ edition = "2018"
 [dependencies]
 libc = "0.2.112"
 serde = { version = "1.0.133", features = ["derive"] }
-snafu = "0.6.10"
+snafu = "0.7.0"
 toml = "0.5.8"
 xdg = "2.4.0"

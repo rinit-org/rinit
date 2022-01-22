@@ -30,7 +30,7 @@ impl TryFrom<String> for ScriptPrefix {
             "path" => ScriptPrefix::Path,
             "sh" => ScriptPrefix::Sh,
             _ => {
-                InvalidScriptPrefixContext {
+                InvalidScriptPrefixSnafu {
                     prefix: value.to_owned(),
                 }
                 .fail()?

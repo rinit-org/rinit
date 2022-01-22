@@ -47,7 +47,7 @@ fn add_field_value<T>(
 ) -> Result<()> {
     ensure!(
         !values.contains_key(key),
-        DuplicateField {
+        DuplicateFieldSnafu {
             field: key.to_owned()
         }
     );
@@ -55,7 +55,7 @@ fn add_field_value<T>(
     let map_key = fields.iter().find(|s| *s == &key);
     ensure!(
         map_key.is_some(),
-        InvalidField {
+        InvalidFieldSnafu {
             field: key.to_owned()
         }
     );
@@ -107,15 +107,15 @@ pub trait SectionBuilder: Any {
             if is_empty_line(line)
                 || code_parser
                     .start_parsing(line)
-                    .with_context(|| CodeParserError)?
+                    .with_context(|_| CodeParserSnafu)?
             {
                 continue;
             } else if (array_parser.is_parsing && {
-                array_parser.parse_line(line).context(ArrayParserError {
+                array_parser.parse_line(line).context(ArrayParserSnafu {
                     field: array_parser.key.to_owned(),
                 })?;
                 true
-            }) || array_parser.start_parsing(line).context(ArrayParserError {
+            }) || array_parser.start_parsing(line).context(ArrayParserSnafu {
                 field: array_parser.key.to_owned(),
             })? {
                 if array_parser.is_parsing {
@@ -125,7 +125,7 @@ pub trait SectionBuilder: Any {
                 let key = array_parser.key.to_owned();
                 add_field_value(
                     &key,
-                    array_parser.get_values().context(ArrayParserError {
+                    array_parser.get_values().context(ArrayParserSnafu {
                         field: key.to_owned(),
                     })?,
                     &mut array_values,
@@ -148,7 +148,7 @@ pub trait SectionBuilder: Any {
         // Check that all parsers state
         ensure!(
             !array_parser.is_parsing,
-            ArrayNotClosed {
+            ArrayNotClosedSnafu {
                 field: array_parser.key
             }
         );

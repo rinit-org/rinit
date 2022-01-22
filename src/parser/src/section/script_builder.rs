@@ -58,8 +58,8 @@ where
     values
         .remove(key)
         .map_or(Ok(default), |value| value.parse())
-        .with_context(|| {
-            InvalidInteger {
+        .with_context(|_| {
+            InvalidIntegerSnafu {
                 key: key.to_string(),
             }
         })
@@ -77,12 +77,12 @@ impl SectionBuilder for ScriptBuilder {
             &mut move |values: &mut HashMap<&'static str, String>| -> Result<Script, ScriptBuilderError> {
                 let prefix = values
                     .remove("prefix")
-                    .with_context(|| NoPrefixFound)?
+                    .with_context(|| NoPrefixFoundSnafu)?
                     .try_into()
-                    .with_context(|| InvalidPrefix)?;
+                    .with_context(|_| InvalidPrefixSnafu)?;
                 let execute = code_values
                     .remove("execute")
-                    .with_context(|| NoExecuteFound)?;
+                    .with_context(|| NoExecuteFoundSnafu)?;
                 let config = ScriptConfig::new();
                 let timeout =
                     get_int_or_default(values, "timeout", Script::DEFAULT_SCRIPT_TIMEOUT)?;
@@ -99,7 +99,7 @@ impl SectionBuilder for ScriptBuilder {
                 let down_signal = values
                     .remove("down_signal")
                     .map_or(Ok(Signal::SIGINT), |down_signal| down_signal.parse())
-                    .with_context(|| InvalidSignal)? as i32;
+                    .with_context(|_| InvalidSignalSnafu)? as i32;
 
                 let autostart = values
                     .remove("autostart")
@@ -110,8 +110,8 @@ impl SectionBuilder for ScriptBuilder {
                             _ => Err(snafu::NoneError),
                         }
                     })
-                    .with_context(|| {
-                        InvalidBoolean {
+                    .with_context(|_| {
+                        InvalidBooleanSnafu {
                             key: "autostart".to_string(),
                         }
                     })?;
@@ -122,8 +122,8 @@ impl SectionBuilder for ScriptBuilder {
                     .map_or(Ok(None), |notify| {
                         notify.parse::<u8>().map(Some)
                     })
-                    .with_context(|| {
-                        InvalidInteger {
+                    .with_context(|_| {
+                        InvalidIntegerSnafu {
                             key: "notify".to_string(),
                         }
                     })?;

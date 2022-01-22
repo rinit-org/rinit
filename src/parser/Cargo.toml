@@ -9,4 +9,4 @@ kansei-core = { path = "../core" }
 async-std = "1.10.0"
 futures = "0.3.19"
 nix = "0.23.1"
-snafu = { version = "0.6.10", features = ["std", "futures", "futures-01"] }
+snafu = { version = "0.7.0", features = ["futures"] }

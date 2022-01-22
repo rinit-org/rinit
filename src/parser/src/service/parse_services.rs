@@ -50,7 +50,7 @@ pub async fn parse_services(
             .collect();
 
     while let Some(future) = currently_parsing.pop() {
-        let service = future.await.context(ParsingServiceError {})?;
+        let service = future.await.context(ParsingServiceSnafu {})?;
         let mut dependencies: Vec<String> = service.dependencies().into();
 
         results.push(service);

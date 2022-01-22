@@ -83,7 +83,7 @@ impl Config {
     pub fn new(opts_configdir: Option<String>) -> Result<Self> {
         let uid = unsafe { libc::getuid() };
         let xdg: BaseDirectories =
-            BaseDirectories::with_prefix("kansei").context(BaseDirectoriesError {})?;
+            BaseDirectories::with_prefix("kansei").context(BaseDirectoriesSnafu {})?;
 
         let mut config = if uid == 0 {
             Self::new_default_config()
@@ -107,24 +107,24 @@ impl Config {
         let configdir = Path::new(&configdir);
         ensure!(
             opts_configdir.is_none() || configdir.exists(),
-            ConfigDirNotFound { configdir }
+            ConfigDirNotFoundSnafu { configdir }
         );
         let config_path = configdir.join("kansei.conf");
         ensure!(
             opts_configdir.is_none() || config_path.exists(),
-            ConfigFileNotFound {
+            ConfigFileNotFoundSnafu {
                 config_file: config_path
             }
         );
         if config_path.exists() {
             let config_from_file =
-                toml::from_str(&fs::read_to_string(&config_path).with_context(|| {
-                    ConfigReadError {
+                toml::from_str(&fs::read_to_string(&config_path).with_context(|_| {
+                    ConfigReadSnafu {
                         config_path: config_path.clone(),
                     }
                 })?)
-                .with_context(|| {
-                    ConfigFormatError {
+                .with_context(|_| {
+                    ConfigFormatSnafu {
                         config_path: config_path.clone(),
                     }
                 })?;
@@ -176,7 +176,7 @@ impl Config {
             configdir: { Some(xdg.get_config_home()) },
             rundir: Some(
                 xdg.get_runtime_directory()
-                    .context(BaseDirectoriesError {})?
+                    .context(BaseDirectoriesSnafu {})?
                     .to_path_buf(),
             ),
             datadir: { Some(xdg.get_data_home()) },

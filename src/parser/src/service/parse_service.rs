@@ -54,8 +54,8 @@ macro_rules! read_key_value {
     ($key:literal, $value:tt, $error_type:tt, $reader:tt, $line:tt, $path:tt) => {
         $reader
             .read_line(&mut $line)
-            .with_context(|| {
-                ReadFile {
+            .with_context(|_| {
+                ReadFileSnafu {
                     path: $path.clone(),
                 }
             })
@@ -77,8 +77,8 @@ macro_rules! read_key_value {
 
 pub async fn parse_service(path: &Path) -> Result<Service> {
     let file = File::open(&path)
-        .with_context(|| {
-            OpenFile {
+        .with_context(|_| {
+            OpenFileSnafu {
                 path: path.to_owned(),
             }
         })
@@ -86,12 +86,12 @@ pub async fn parse_service(path: &Path) -> Result<Service> {
     let mut reader = BufReader::new(file);
     let mut line = String::new();
 
-    read_key_value!("name", name, NameNotFound, reader, line, path);
+    read_key_value!("name", name, NameNotFoundSnafu, reader, line, path);
     // Otherwise we can't borrow line as mutable again
     let name = name.to_owned();
     line.clear();
 
-    read_key_value!("type", service_type, TypeNotFound, reader, line, path);
+    read_key_value!("type", service_type, TypeNotFoundSnafu, reader, line, path);
     let lines = &reader
         .lines()
         .map(|line| line.unwrap())
@@ -100,49 +100,49 @@ pub async fn parse_service(path: &Path) -> Result<Service> {
     match service_type {
         "bundle" => {
             let mut builder = BundleBuilder::new(name);
-            builder.parse(lines).with_context(|| {
-                ServiceParse {
+            builder.parse(lines).with_context(|_| {
+                ServiceParseSnafu {
                     path: path.to_owned(),
                 }
             })?;
 
-            builder.build().with_context(|| {
-                ServiceBuild {
+            builder.build().with_context(|_| {
+                ServiceBuildSnafu {
                     path: path.to_owned(),
                 }
             })
         }
         "longrun" => {
             let mut builder = LongrunBuilder::new(name);
-            builder.parse(lines).with_context(|| {
-                ServiceParse {
+            builder.parse(lines).with_context(|_| {
+                ServiceParseSnafu {
                     path: path.to_owned(),
                 }
             })?;
 
-            builder.build().with_context(|| {
-                ServiceBuild {
+            builder.build().with_context(|_| {
+                ServiceBuildSnafu {
                     path: path.to_owned(),
                 }
             })
         }
         "oneshot" => {
             let mut builder = OneshotBuilder::new(name);
-            builder.parse(lines).with_context(|| {
-                ServiceParse {
+            builder.parse(lines).with_context(|_| {
+                ServiceParseSnafu {
                     path: path.to_owned(),
                 }
             })?;
 
-            builder.build().with_context(|| {
-                ServiceBuild {
+            builder.build().with_context(|_| {
+                ServiceBuildSnafu {
                     path: path.to_owned(),
                 }
             })
         }
         // "virtual" => VirtualParser::parse(name, reader),
         _ => {
-            TypeNotFound {
+            TypeNotFoundSnafu {
                 path: path.to_owned(),
             }
             .fail()?

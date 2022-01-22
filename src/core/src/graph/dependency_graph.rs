@@ -168,7 +168,7 @@ impl DependencyGraph {
                     .try_for_each(|dep| -> Result<()> {
                         ensure!(
                             self.has_service(dep),
-                            DependenciesUnfulfilledError {
+                            DependenciesUnfulfilledSnafu {
                                 service: node.name().to_owned(),
                                 dependency: dep.to_owned()
                             }
@@ -229,7 +229,7 @@ impl DependencyGraph {
             let node_index = *self
                 .nodes_index
                 .get(service)
-                .context(ServiceNotEnabled { service })?;
+                .context(ServiceNotEnabledSnafu { service })?;
             self.enabled_services.remove(&node_index);
             if !self.is_node_required(node_index) {
                 self.remove_node(node_index);

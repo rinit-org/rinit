@@ -66,7 +66,7 @@ impl ArrayParser {
         self.is_parsing = true;
         let rest_of_line = &line[bracket_token_index + 1..];
         if !rest_of_line.is_empty() {
-            ensure!(rest_of_line.starts_with(' '), NoSpaceAfterStartTokenError);
+            ensure!(rest_of_line.starts_with(' '), NoSpaceAfterStartTokenSnafu);
             self.parse_line(rest_of_line.trim())?;
         }
         Ok(true)
@@ -83,11 +83,11 @@ impl ArrayParser {
 
         let mut items: Vec<&str> = line.split(' ').collect();
         let count = items.iter().filter(|&n| *n == "]").count();
-        ensure!(count < 2, MultipleClosingDelimiterFoundError);
+        ensure!(count < 2, MultipleClosingDelimiterFoundSnafu);
 
         ensure!(
             count != 1 || items.last().unwrap_or(&"") == &"]",
-            ValuesFoundAfterEndingDelimeterError
+            ValuesFoundAfterEndingDelimeterSnafu
         );
 
         if count == 1 {
@@ -108,11 +108,11 @@ impl ArrayParser {
         let (_, dups) = self.values.partition_dedup();
         ensure!(
             dups.is_empty(),
-            DuplicatedValuesFound {
+            DuplicatedValuesFoundSnafu {
                 values: dups.to_vec()
             }
         );
-        ensure!(!self.values.is_empty(), EmptyArray {});
+        ensure!(!self.values.is_empty(), EmptyArraySnafu {});
         Ok(self.values)
     }
 }
