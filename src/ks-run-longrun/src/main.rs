@@ -187,7 +187,7 @@ mod test {
 
     #[tokio::test]
     async fn test_supervise() {
-        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
         script.timeout = 1;
         let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
         assert!(matches!(
@@ -198,7 +198,7 @@ mod test {
 
     #[tokio::test]
     async fn test_supervise_signal() {
-        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 1".to_string());
         script.timeout = 1;
         let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
         assert!(matches!(
