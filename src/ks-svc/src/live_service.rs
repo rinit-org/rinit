@@ -1,12 +1,12 @@
 use async_pidfd::PidFd;
-use async_std::sync::{
-    Condvar,
-    Mutex,
-};
 use chrono::prelude::*;
 use kansei_core::{
     graph::Node,
     types::ScriptConfig,
+};
+use tokio::sync::{
+    Mutex,
+    Notify,
 };
 
 #[derive(Clone, PartialEq)]
@@ -23,7 +23,7 @@ pub struct LiveService {
     pub updated_node: Option<Node>,
     pub status: Mutex<ServiceStatus>,
     pub status_changed: Option<DateTime<Local>>,
-    pub wait: Condvar,
+    pub wait: Notify,
     // Skip starting and stopping values here
     pub last_status: Option<ServiceStatus>,
     // first element for Oneshot::start and Longrun::run
@@ -41,7 +41,7 @@ impl LiveService {
             updated_node: None,
             status: Mutex::new(ServiceStatus::Reset),
             status_changed: None,
-            wait: Condvar::new(),
+            wait: Notify::new(),
             last_status: None,
             config: None,
             environment: None,
@@ -64,16 +64,14 @@ impl LiveService {
         }
         *status = new_status;
         self.status_changed = Some(chrono::offset::Local::now());
-        self.wait.notify_all();
+        self.wait.notify_waiters();
     }
 
     pub async fn wait_on_status(&self) -> ServiceStatus {
-        (*self
-            .wait
-            .wait_until(self.status.lock().await, |status| {
-                *status == ServiceStatus::Up || *status == ServiceStatus::Down
-            })
-            .await)
-            .clone()
+        let status = self.status.lock().await;
+        if *status != ServiceStatus::Up && *status != ServiceStatus::Down {
+            self.wait.notified().await;
+        }
+        status.clone()
     }
 }

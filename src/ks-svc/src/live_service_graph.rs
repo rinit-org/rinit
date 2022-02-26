@@ -1,21 +1,20 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    process::Stdio,
+};
 
 use anyhow::Result;
 use async_recursion::async_recursion;
-use async_std::{
-    process::{
-        Command,
-        Stdio,
-    },
-    sync::{
-        RwLock,
-        RwLockUpgradableReadGuard,
-        RwLockWriteGuard,
-    },
-};
 use kansei_core::{
     graph::DependencyGraph,
     types::Service,
+};
+use tokio::{
+    process::Command,
+    sync::{
+        RwLock,
+        RwLockWriteGuard,
+    },
 };
 
 use crate::live_service::{
@@ -85,18 +84,16 @@ impl LiveServiceGraph {
                 let services = self.live_services.read().await;
                 let dep_service = services
                     .get(*self.indexes.get(dep).expect("This should nevel happen"))
-                    .unwrap()
-                    .upgradable_read()
-                    .await;
+                    .unwrap();
                 let res = {
-                    let status = dep_service.status.lock().await;
+                    let lock = dep_service.read().await;
+                    let status = lock.status.lock().await;
                     *status != ServiceStatus::Up
                         && *status != ServiceStatus::Starting
                         && *status != ServiceStatus::Stopping
                 };
                 if res {
-                    self.start_service(&mut RwLockUpgradableReadGuard::upgrade(dep_service).await)
-                        .await;
+                    self.start_service(&mut dep_service.write().await).await;
                 }
             })
             .collect();

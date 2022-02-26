@@ -9,14 +9,13 @@ use anyhow::{
     Context,
     Result,
 };
-use async_std::task;
 use kansei_core::{
     config::Config,
     graph::DependencyGraph,
 };
 use live_service_graph::LiveServiceGraph;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::new(None)?;
 
@@ -28,7 +27,7 @@ async fn main() -> Result<()> {
     .with_context(|| format!("unable to deserialize graph from file {:?}", graph_file))?;
 
     let live_graph = LiveServiceGraph::new(graph)?;
-    task::spawn(async move {
+    tokio::spawn(async move {
         live_graph.start_all_services().await;
     });
 
