@@ -601,12 +601,12 @@ name = "ks-ctl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-std",
  "bincode",
  "clap",
  "kansei-core",
  "kansei-parser",
  "snafu",
+ "tokio",
 ]
 
 [[package]]

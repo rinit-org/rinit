@@ -20,7 +20,7 @@ struct Opts {
     subcmd: Command,
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
     let config = Config::new(None)?;
