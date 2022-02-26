@@ -589,11 +589,11 @@ dependencies = [
 name = "kansei-parser"
 version = "0.1.0"
 dependencies = [
- "async-std",
  "futures",
  "kansei-core",
  "nix",
  "snafu",
+ "tokio",
 ]
 
 [[package]]

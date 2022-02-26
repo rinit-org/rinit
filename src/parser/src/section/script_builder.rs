@@ -183,12 +183,7 @@ mod test {
         let mut builder = ScriptBuilder::new_for_section("start");
         assert!(
             builder
-                .parse_until_next_section(&[
-                    "prefix = bash".to_string(),
-                    "execute = (".to_string(),
-                    "    exit 0".to_string(),
-                    ")".to_string(),
-                ])
+                .parse_until_next_section(&["prefix = bash", "execute = (", "    exit 0", ")",])
                 .unwrap()
                 .is_empty()
         );

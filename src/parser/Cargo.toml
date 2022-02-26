@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 kansei-core = { path = "../core" }
-async-std = "1.10.0"
 futures = "0.3.21"
 nix = "0.23.1"
 snafu = { version = "0.7.0", features = ["futures"] }
+tokio = "1.17.0"

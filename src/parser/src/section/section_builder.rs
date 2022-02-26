@@ -79,14 +79,14 @@ pub trait SectionBuilder: Any {
 
     fn parse_until_next_section<'a>(
         &mut self,
-        lines: &'a [String],
-    ) -> Result<&'a [String]> {
+        lines: &'a [&'a str],
+    ) -> Result<&'a [&'a str]> {
         let mut array_parser = ArrayParser::new();
         let mut code_parser = CodeParser::new();
         let mut values: HashMap<&'static str, String> = HashMap::new();
         let mut array_values: HashMap<&'static str, Vec<String>> = HashMap::new();
         let mut code_values: HashMap<&'static str, String> = HashMap::new();
-        let mut next_section: &'a [String] = &[];
+        let mut next_section: &'a [&str] = &[];
         for (index, line) in lines.iter().enumerate() {
             if code_parser.is_parsing {
                 code_parser.parse_line(line);

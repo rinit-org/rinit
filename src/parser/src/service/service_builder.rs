@@ -42,9 +42,9 @@ pub enum ServiceBuilderError {
 
 macro_rules! parse_sections{
     ($self:ident, $( $section:expr, $builder:expr ),*) => {
-    fn parse(&mut $self, lines: &[String]) -> Result<(), ServiceBuilderError> {
+    fn parse(&mut $self, lines: &[&str]) -> Result<(), ServiceBuilderError> {
         use self::InvalidSectionSnafu;
-        let mut lines: &[String] = lines;
+        let mut lines: &[&str] = lines;
         let mut start = 0;
         let len = lines.len();
         loop {
@@ -79,7 +79,7 @@ pub trait ServiceBuilder {
     fn build(self) -> Result<Service, Box<dyn snafu::Error>>;
     fn parse(
         &mut self,
-        lines: &[String],
+        lines: &[&str],
     ) -> Result<(), ServiceBuilderError>;
 }
 
@@ -201,7 +201,10 @@ impl ServiceBuilder for LongrunBuilder {
     fn build(self) -> Result<Service, Box<dyn Error>> {
         Ok(Service::Longrun(Longrun {
             name: self.name,
-            run: self.run_builder.script.with_context(|| NoRunSectionSnafu)??,
+            run: self
+                .run_builder
+                .script
+                .with_context(|| NoRunSectionSnafu)??,
             finish: if let Some(finish) = self.finish_builder.script {
                 Some(finish?)
             } else {

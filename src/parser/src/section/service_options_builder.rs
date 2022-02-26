@@ -69,9 +69,9 @@ mod test {
         assert!(
             builder
                 .parse_until_next_section(&[
-                    "dependencies = [ foo ]".to_string(),
-                    "requires = [ bar ]".to_string(),
-                    "requires-one = [ foobar ]".to_string()
+                    "dependencies = [ foo ]",
+                    "requires = [ bar ]",
+                    "requires-one = [ foobar ]"
                 ])
                 .unwrap()
                 .is_empty()

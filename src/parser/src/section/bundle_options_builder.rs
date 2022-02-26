@@ -69,7 +69,7 @@ mod test {
         let mut builder = BundleOptionsBuilder::new();
         assert!(
             builder
-                .parse_until_next_section(&["contents = [ foo ]".to_string()])
+                .parse_until_next_section(&["contents = [ foo ]"])
                 .unwrap()
                 .is_empty()
         );
@@ -83,7 +83,7 @@ mod test {
         let mut builder = BundleOptionsBuilder::new();
         assert_eq!(
             builder
-                .parse_until_next_section(&["foo = [ bar ]".to_string()])
+                .parse_until_next_section(&["foo = [ bar ]"])
                 .unwrap_err(),
             SectionBuilderError::InvalidField {
                 field: "foo".to_string()
