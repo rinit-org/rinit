@@ -24,6 +24,7 @@ use kansei_exec::{
     run_short_lived_script,
     signal_wait,
 };
+use kansei_message::Message;
 use tokio::{
     fs,
     io::unix::AsyncFd,
@@ -125,7 +126,8 @@ async fn main() -> Result<()> {
             }
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
-                // TODO: notify up
+                let message = Message::ServiceIsUp(true, longrun.name.clone());
+                message.send().await.context("unable to notify svc")?;
                 let res = supervise(&pidfd, &longrun.run, signal_wait()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -149,7 +151,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    // TODO: notify down
+    let message = Message::ServiceIsUp(false, longrun.name.clone());
+    message.send().await.context("unable to notify svc")?;
 
     Ok(())
 }
@@ -187,7 +190,6 @@ mod test {
     async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
         script.timeout = 5;
-        let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
             ScriptResult::Exited(..)
