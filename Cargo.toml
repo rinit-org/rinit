@@ -8,4 +8,5 @@ members = [
     "src/exec",
     "src/ks-run-longrun",
     "src/ks-run-oneshot",
+    "src/message",
 ]

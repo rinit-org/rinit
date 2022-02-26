@@ -574,6 +574,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kansei-message"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "lazy_static",
+ "nix",
+ "serde",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
 name = "kansei-parser"
 version = "0.1.0"
 dependencies = [
@@ -606,6 +618,7 @@ dependencies = [
  "bincode",
  "kansei-core",
  "kansei-exec",
+ "kansei-message",
  "lazy_static",
  "tokio",
 ]
