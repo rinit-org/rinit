@@ -34,68 +34,58 @@ use tokio::{
 
 const SIGKILL: i32 = 9;
 
-#[derive(Debug, PartialEq)]
 enum ScriptResult {
     Exited(ExitStatus),
-    Running,
+    Running(AsyncFd<PidFd>),
     SignalReceived,
 }
 
-async fn start_script<F>(
+async fn start_process<F>(
     script: &Script,
     mut wait: F,
-) -> Result<Option<AsyncFd<PidFd>>>
+) -> Result<ScriptResult>
 where
     F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
 {
     let script_timeout = Duration::from_millis(script.timeout as u64);
 
-    let mut time_tried = 0;
-    Ok(loop {
-        let child = exec_script(script)
-            .await
-            .context("unable to execute script")?;
-        let pidfd = AsyncFd::new(
-            PidFd::from_pid(child.id().unwrap() as i32)
-                .context("unable to create PidFd from child pid")?,
-        )
-        .context("unable to create AsyncFd from PidFd")?;
-        let script_res = select! {
-            timeout_res = timeout(script_timeout, pidfd.readable()) => {
-                if timeout_res.is_ok() {
-                    ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
-                } else {
-                    ScriptResult::Running
-                }
-            }
-            _ = wait() => ScriptResult::SignalReceived
-        };
-
-        match script_res {
-            ScriptResult::Running => break Some(pidfd),
-            ScriptResult::Exited(_) => {
-                time_tried += 1;
-                if time_tried == script.max_deaths {
-                    break None;
-                }
-            }
-            ScriptResult::SignalReceived => {
-                pidfd_send_signal(pidfd.as_raw_fd(), script.down_signal)
-                    .with_context(|| format!("unable to send signal {:?}", script.down_signal))?;
-                let timeout_res = timeout(
-                    Duration::from_millis(script.timeout_kill as u64),
-                    pidfd.readable(),
-                )
-                .await;
-                if timeout_res.is_err() {
-                    pidfd_send_signal(pidfd.as_raw_fd(), SIGKILL)
-                        .context("unable to send signal SIGKILL")?;
-                }
-                pidfd.get_ref().wait().context("unable to call waitid")?;
-                break None;
+    let child = exec_script(script)
+        .await
+        .context("unable to execute script")?;
+    let pidfd = AsyncFd::new(
+        PidFd::from_pid(child.id().unwrap() as i32)
+            .context("unable to create PidFd from child pid")?,
+    )
+    .context("unable to create AsyncFd from PidFd")?;
+    Ok(select! {
+        timeout_res = timeout(script_timeout, pidfd.readable()) => {
+            if timeout_res.is_ok() {
+                ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
+            } else {
+                ScriptResult::Running(pidfd)
             }
         }
+        _ = wait() => {
+            stop_process(&pidfd, script.down_signal, script.timeout_kill as u64).await?;
+            ScriptResult::SignalReceived
+        }
     })
+}
+
+async fn stop_process(
+    pidfd: &AsyncFd<PidFd>,
+    down_signal: i32,
+    timeout_kill: u64,
+) -> Result<()> {
+    pidfd_send_signal(pidfd.as_raw_fd(), down_signal)
+        .with_context(|| format!("unable to send signal {:?}", down_signal))?;
+    let timeout_res = timeout(Duration::from_millis(timeout_kill), pidfd.readable()).await;
+    if timeout_res.is_err() {
+        pidfd_send_signal(pidfd.as_raw_fd(), SIGKILL).context("unable to send signal SIGKILL")?;
+    }
+    pidfd.get_ref().wait().context("unable to call waitid")?;
+
+    Ok(())
 }
 
 async fn supervise<F>(
@@ -119,33 +109,47 @@ async fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
     let longrun: Longrun = bincode::deserialize(&fs::read(args.next().unwrap()).await?)?;
-    let mut pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
+    let mut time_tried = 0;
+    loop {
+        let script_res = start_process(&longrun.run, signal_wait()).await?;
 
-    // TODO: notify SVC
-
-    while let Some(pidfd) = &pidfd_opt {
-        let res = supervise(pidfd, &longrun.run, signal_wait()).await?;
-
-        match res {
+        match script_res {
             ScriptResult::Exited(_) => {
-                // If the process has died, run finish script,
-                // notify the SVC and run into the next loop cycle
-                //to run start_script again
-                if let Some(finish_script) = &longrun.finish {
-                    let _ = run_short_lived_script(finish_script, signal_wait());
+                time_tried += 1;
+                if time_tried == longrun.run.max_deaths {
+                    break;
                 }
-                pidfd_opt = start_script(&longrun.run, signal_wait()).await?;
-
-                // TODO: notify SVC
+                if let Some(finish_script) = &longrun.finish {
+                    let _ = run_short_lived_script(finish_script, signal_wait()).await;
+                }
             }
-            ScriptResult::SignalReceived => {
-                // stop running
-                break;
+            ScriptResult::Running(pidfd) => {
+                time_tried = 0;
+                // TODO: notify up
+                let res = supervise(&pidfd, &longrun.run, signal_wait()).await?;
+                match res {
+                    ScriptResult::Exited(_) => {}
+                    ScriptResult::SignalReceived => {
+                        // stop running
+                        stop_process(
+                            &pidfd,
+                            longrun.run.down_signal,
+                            longrun.run.timeout_kill as u64,
+                        )
+                        .await?;
+                        if let Some(finish_script) = &longrun.finish {
+                            let _ = run_short_lived_script(finish_script, signal_wait()).await;
+                        }
+                        break;
+                    }
+                    ScriptResult::Running(_) => unreachable!(),
+                }
             }
-            ScriptResult::Running => unreachable!(),
+            ScriptResult::SignalReceived => break,
         }
     }
-    // pidfd_opt == None => Received signal => stop running
+
+    // TODO: notify down
 
     Ok(())
 }
@@ -168,42 +172,53 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_start_script() {
+    async fn test_start_process() {
         // sleep for 10ms
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
         // wait for 1ms
         script.timeout = 1;
-        let pidfd = start_script(&script, wait!(1000)).await.unwrap();
-        assert!(pidfd.is_some());
+        assert!(matches!(
+            start_process(&script, wait!(1000)).await.unwrap(),
+            ScriptResult::Running(..)
+        ));
     }
 
     #[tokio::test]
-    async fn test_start_script_failure() {
+    async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
         script.timeout = 5;
-        let pidfd = start_script(&script, wait!(1000)).await.unwrap();
-        assert!(pidfd.is_none());
+        let pidfd = start_process(&script, wait!(1000)).await.unwrap();
+        assert!(matches!(
+            start_process(&script, wait!(1000)).await.unwrap(),
+            ScriptResult::Exited(..)
+        ));
     }
 
     #[tokio::test]
     async fn test_supervise() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
         script.timeout = 1;
-        let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
-        assert!(matches!(
-            supervise(&pidfd, &script, wait!(1000)).await.unwrap(),
-            ScriptResult::Exited(..)
-        ));
+        let pidfd = start_process(&script, wait!(1000)).await.unwrap();
+        assert!(matches!(pidfd, ScriptResult::Running(..)));
+        if let ScriptResult::Running(pidfd) = pidfd {
+            assert!(matches!(
+                supervise(&pidfd, &script, wait!(1000)).await.unwrap(),
+                ScriptResult::Exited(..)
+            ));
+        }
     }
 
     #[tokio::test]
     async fn test_supervise_signal() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 1".to_string());
         script.timeout = 1;
-        let pidfd = start_script(&script, wait!(1000)).await.unwrap().unwrap();
-        assert!(matches!(
-            supervise(&pidfd, &script, wait!(1)).await.unwrap(),
-            ScriptResult::SignalReceived
-        ));
+        let pidfd = start_process(&script, wait!(1000)).await.unwrap();
+        assert!(matches!(pidfd, ScriptResult::Running(..)));
+        if let ScriptResult::Running(pidfd) = pidfd {
+            assert!(matches!(
+                supervise(&pidfd, &script, wait!(1)).await.unwrap(),
+                ScriptResult::SignalReceived
+            ));
+        }
     }
 }

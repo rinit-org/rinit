@@ -639,19 +639,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ksupervisord"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-pidfd",
- "clap",
- "libc",
- "nix",
- "polling",
- "xdg",
-]
-
-[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
