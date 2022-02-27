@@ -77,6 +77,8 @@ impl DependencyGraph {
             index
         };
 
+        self.check_dependencies(starting_index)?;
+
         // Update enabled services set and populate dependents
         services_to_enable.iter().for_each(|service| {
             let index = self.get_index_from_name(service);
@@ -88,7 +90,6 @@ impl DependencyGraph {
             }
         });
 
-        self.check_dependencies(starting_index)?;
         self.check_cycles(
             services_to_enable
                 .iter()
