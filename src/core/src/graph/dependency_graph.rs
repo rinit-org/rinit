@@ -28,7 +28,7 @@ pub enum DependencyGraphError {
     ServiceNotEnabled { service: String },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DependencyGraph {
     pub enabled_services: HashSet<usize>,
     nodes_index: HashMap<String, usize>,
