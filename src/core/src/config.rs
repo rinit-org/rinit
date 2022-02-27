@@ -177,7 +177,7 @@ impl Config {
             rundir: Some(
                 xdg.get_runtime_directory()
                     .context(BaseDirectoriesSnafu {})?
-                    .to_path_buf(),
+                    .join("kansei"),
             ),
             datadir: { Some(xdg.get_data_home()) },
             service_directories: vec![
