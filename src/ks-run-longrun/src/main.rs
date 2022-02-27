@@ -4,6 +4,7 @@ use std::{
     env,
     future::Future,
     os::unix::prelude::AsRawFd,
+    path::Path,
     pin::Pin,
     process::ExitStatus,
     time::Duration,
@@ -109,7 +110,8 @@ where
 async fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
-    let longrun: Longrun = bincode::deserialize(&fs::read(args.next().unwrap()).await?)?;
+    let longrun: Longrun =
+        bincode::deserialize(&fs::read(Path::new(&args.next().unwrap()).join("service")).await?)?;
     let mut time_tried = 0;
     loop {
         let script_res = start_process(&longrun.run, signal_wait()).await?;
