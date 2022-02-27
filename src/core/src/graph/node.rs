@@ -37,7 +37,7 @@ impl Node {
         &mut self,
         dependent: usize,
     ) {
-        if self.dependents.contains(&dependent) {
+        if !self.dependents.contains(&dependent) {
             self.dependents.insert(dependent);
         }
     }
