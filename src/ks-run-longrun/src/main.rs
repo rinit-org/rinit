@@ -176,8 +176,8 @@ mod test {
 
     #[tokio::test]
     async fn test_start_process() {
-        // sleep for 10ms
-        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.001".to_string());
+        // sleep for 100ms
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.01".to_string());
         // wait for 1ms
         script.timeout = 1;
         assert!(matches!(
