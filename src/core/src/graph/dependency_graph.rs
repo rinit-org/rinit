@@ -79,8 +79,13 @@ impl DependencyGraph {
 
         // Update enabled services set and populate dependents
         services_to_enable.iter().for_each(|service| {
-            self.enabled_services
-                .insert(self.get_index_from_name(service));
+            let index = self.get_index_from_name(service);
+            self.enabled_services.insert(index);
+            let dependencies = self.nodes[index].service.dependencies().to_owned();
+            for dep in dependencies {
+                println!("{dep}");
+                self.get_node_from_name(&dep).add_dependent(index);
+            }
         });
 
         self.check_dependencies(starting_index)?;
