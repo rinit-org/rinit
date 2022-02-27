@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     process::Stdio,
+    sync::Arc,
 };
 
 use anyhow::Result;
@@ -10,6 +11,11 @@ use kansei_core::{
     types::Service,
 };
 use tokio::{
+    fs::{
+        self,
+        File,
+    },
+    io::AsyncWriteExt,
     process::Command,
     sync::{
         RwLock,
@@ -17,14 +23,17 @@ use tokio::{
     },
 };
 
-use crate::live_service::{
-    LiveService,
-    ServiceStatus,
+use crate::{
+    live_service::{
+        LiveService,
+        ServiceStatus,
+    },
+    CONFIG,
 };
 
 pub struct LiveServiceGraph {
     indexes: HashMap<String, usize>,
-    live_services: RwLock<Vec<RwLock<LiveService>>>,
+    live_services: RwLock<Vec<Arc<RwLock<LiveService>>>>,
 }
 
 impl LiveServiceGraph {
@@ -40,23 +49,33 @@ impl LiveServiceGraph {
                 .enumerate()
                 .map(|(i, el)| (el.node.name().to_owned(), i))
                 .collect(),
-            live_services: RwLock::new(nodes.into_iter().map(RwLock::new).collect()),
+            live_services: RwLock::new(
+                nodes
+                    .into_iter()
+                    .map(|node| Arc::new(RwLock::new(node)))
+                    .collect(),
+            ),
         })
     }
 
-    pub async fn start_all_services(&self) {
+    pub async fn start_all_services(&'static self) {
         let services = self.live_services.read().await;
         let futures: Vec<_> = services
-            .iter()
-            .map(async move |live_service| {
-                if live_service.read().await.node.service.should_start() {
-                    self.start_service_impl(&mut live_service.write().await)
-                        .await;
-                }
+            .clone()
+            .into_iter()
+            .map(|live_service| {
+                let live_service = live_service.to_owned();
+                tokio::spawn(async move {
+                    if live_service.read().await.node.service.should_start() {
+                        println!("name: {}", live_service.read().await.node.name());
+                        self.start_service_impl(&mut live_service.write().await)
+                            .await;
+                    }
+                })
             })
             .collect();
         for future in futures {
-            future.await;
+            future.await.unwrap();
         }
     }
 
@@ -107,15 +126,28 @@ impl LiveServiceGraph {
         live_service: &mut RwLockWriteGuard<'_, LiveService>,
     ) {
         self.wait_on_deps(&*live_service).await;
-        let exe = match &live_service.node.service {
-            Service::Oneshot(_) => Some("ks-run-oneshot"),
-            Service::Longrun(_) => Some("ks-run-longrun"),
+        let res = match &live_service.node.service {
+            Service::Oneshot(oneshot) => Some(("ks-run-oneshot", bincode::serialize(&oneshot))),
+            Service::Longrun(longrun) => Some(("ks-run-longrun", bincode::serialize(&longrun))),
             Service::Bundle(_) => None,
             Service::Virtual(_) => None,
         };
-        if let Some(exe) = exe {
+        if let Some((exe, ser_res)) = res {
+            let config = CONFIG.read().await;
+            let runtime_service_dir = config
+                .as_ref()
+                .rundir
+                .as_ref()
+                .unwrap()
+                .join(&live_service.node.name());
+            fs::create_dir_all(&runtime_service_dir).await.unwrap();
+            let service_path = runtime_service_dir.join("service");
+            let mut file = File::create(service_path).await.unwrap();
+            let buf = ser_res.unwrap();
+            file.write(&buf).await.unwrap();
             // TODO: Add logging and remove unwrap
             Command::new(exe)
+                .args(vec![runtime_service_dir])
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())
                 .spawn()
