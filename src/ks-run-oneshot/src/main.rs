@@ -6,13 +6,14 @@ use kansei_exec::{
     run_short_lived_script,
     signal_wait,
 };
+use kansei_message::Message;
 use tokio::fs;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
-    let script: Script = bincode::deserialize(&fs::read(args.next().unwrap()).await?)?;
+    let script: Script = serde_json::from_slice(&mut fs::read(args.next().unwrap()).await?)?;
     let success = run_short_lived_script(&script, signal_wait()).await?;
 
     println!("success: {}", success);

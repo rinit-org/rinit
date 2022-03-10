@@ -28,8 +28,8 @@ impl EnableCommand {
         );
         let graph_file = config.get_graph_filename();
         let mut graph: DependencyGraph = if graph_file.exists() {
-            bincode::deserialize(
-                &fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
+            serde_json::from_slice(
+                &mut fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
                 )?[..],
             )
             .context("unable to deserialize the dependency graph")?
@@ -52,7 +52,7 @@ impl EnableCommand {
         })?;
         fs::write(
             &graph_file,
-            bincode::serialize(&graph).context("unable to serialize the dependency graph")?,
+            serde_json::to_vec(&graph).context("unable to serialize the dependency graph")?,
         )
         .with_context(|| format!("unable to write the dependency graph to {:?}", graph_file))?;
 

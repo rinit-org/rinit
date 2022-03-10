@@ -127,8 +127,8 @@ impl LiveServiceGraph {
     ) {
         self.wait_on_deps(&*live_service).await;
         let res = match &live_service.node.service {
-            Service::Oneshot(oneshot) => Some(("ks-run-oneshot", bincode::serialize(&oneshot))),
-            Service::Longrun(longrun) => Some(("ks-run-longrun", bincode::serialize(&longrun))),
+            Service::Oneshot(oneshot) => Some(("ks-run-oneshot", serde_json::to_vec(&oneshot))),
+            Service::Longrun(longrun) => Some(("ks-run-longrun", serde_json::to_vec(&longrun))),
             Service::Bundle(_) => None,
             Service::Virtual(_) => None,
         };

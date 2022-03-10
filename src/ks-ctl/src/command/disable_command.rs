@@ -27,8 +27,8 @@ impl DisableCommand {
         );
         let graph_file = config.get_graph_filename();
         ensure!(graph_file.exists(), "kansei has not been initialized yet");
-        let mut graph: DependencyGraph = bincode::deserialize(
-            &fs::read(&graph_file)
+        let mut graph: DependencyGraph = serde_json::from_slice(
+            &mut fs::read(&graph_file)
                 .with_context(|| format!("unable to read graph from file {:?}", graph_file))?[..],
         )
         .context("unable to deserialize the dependency graph")?;
@@ -38,7 +38,7 @@ impl DisableCommand {
 
         fs::write(
             &graph_file,
-            bincode::serialize(&graph).context("unable to serialize the dependency graph")?,
+            serde_json::to_vec(&graph).context("unable to serialize the dependency graph")?,
         )
         .with_context(|| format!("unable to write the dependency graph to {:?}", graph_file))?;
 

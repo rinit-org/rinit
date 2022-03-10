@@ -31,8 +31,10 @@ lazy_static! {
     pub static ref CONFIG: RwLock<Arc<Config>> =
         RwLock::new(unsafe { Arc::new_zeroed().assume_init() });
     pub static ref LIVE_GRAPH: LiveServiceGraph = LiveServiceGraph::new(
-        bincode::deserialize(&fs::read(&*CONFIG.try_read().unwrap().get_graph_filename()).unwrap())
-            .unwrap()
+        serde_json::from_slice(
+            &mut fs::read(&*CONFIG.try_read().unwrap().get_graph_filename()).unwrap()
+        )
+        .unwrap()
     )
     .unwrap();
 }
