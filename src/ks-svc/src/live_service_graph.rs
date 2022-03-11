@@ -66,10 +66,12 @@ impl LiveServiceGraph {
             .map(|live_service| {
                 let live_service = live_service.to_owned();
                 tokio::spawn(async move {
-                    if live_service.read().await.node.service.should_start() {
-                        println!("name: {}", live_service.read().await.node.name());
-                        self.start_service_impl(&mut live_service.write().await)
-                            .await;
+                    let should_start = {
+                        let live_service = live_service.read().await;
+                        live_service.node.service.should_start().clone()
+                    };
+                    if should_start {
+                        self.start_service_impl(live_service.clone()).await;
                     }
                 })
             })
@@ -82,22 +84,29 @@ impl LiveServiceGraph {
     #[async_recursion]
     async fn start_service(
         &self,
-        live_service: &mut RwLockWriteGuard<'_, LiveService>,
+        live_service: Arc<RwLock<LiveService>>,
     ) {
-        live_service.change_status(ServiceStatus::Starting).await;
-        self.start_dependencies(live_service).await;
+        {
+            live_service
+                .write()
+                .await
+                .change_status(ServiceStatus::Starting)
+                .await;
+        }
+        self.start_dependencies(&live_service).await;
         self.start_service_impl(live_service).await;
     }
 
     async fn start_dependencies(
         &self,
-        live_service: &mut RwLockWriteGuard<'_, LiveService>,
+        live_service: &Arc<RwLock<LiveService>>,
     ) {
+        let dependencies = {
+            let live_service = live_service.read().await;
+            live_service.node.service.dependencies().to_owned()
+        };
         // Start dependencies
-        let futures: Vec<_> = live_service
-            .node
-            .service
-            .dependencies()
+        let futures: Vec<_> = dependencies
             .iter()
             .map(async move |dep| {
                 let services = self.live_services.read().await;
@@ -112,7 +121,7 @@ impl LiveServiceGraph {
                         && *status != ServiceStatus::Stopping
                 };
                 if res {
-                    self.start_service(&mut dep_service.write().await).await;
+                    self.start_service(dep_service.clone()).await;
                 }
             })
             .collect();
@@ -123,9 +132,10 @@ impl LiveServiceGraph {
 
     async fn start_service_impl(
         &self,
-        live_service: &mut RwLockWriteGuard<'_, LiveService>,
-    ) {
-        self.wait_on_deps(&*live_service).await;
+        live_service: Arc<RwLock<LiveService>>,
+    ) -> Result<()> {
+        self.wait_on_deps(live_service.clone()).await;
+        let live_service = live_service.read().await;
         let res = match &live_service.node.service {
             Service::Oneshot(oneshot) => Some(("ks-run-oneshot", serde_json::to_vec(&oneshot))),
             Service::Longrun(longrun) => Some(("ks-run-longrun", serde_json::to_vec(&longrun))),
@@ -153,16 +163,19 @@ impl LiveServiceGraph {
                 .spawn()
                 .unwrap();
         }
+
+        Ok(())
     }
 
     async fn wait_on_deps(
         &self,
-        live_service: &LiveService,
+        live_service: Arc<RwLock<LiveService>>,
     ) {
-        let futures: Vec<_> = live_service
-            .node
-            .service
-            .dependencies()
+        let dependencies = {
+            let live_service = live_service.read().await;
+            live_service.node.service.dependencies().to_owned()
+        };
+        let futures: Vec<_> = dependencies
             .iter()
             .map(async move |dep| -> ServiceStatus {
                 let services = self.live_services.read().await;
