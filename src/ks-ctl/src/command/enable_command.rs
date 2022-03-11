@@ -13,6 +13,7 @@ use crate::Config;
 
 #[derive(Parser)]
 pub struct EnableCommand {
+    #[clap(required = true)]
     services: Vec<String>,
 }
 
