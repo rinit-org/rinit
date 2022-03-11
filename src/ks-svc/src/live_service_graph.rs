@@ -164,14 +164,27 @@ impl LiveServiceGraph {
             .service
             .dependencies()
             .iter()
-            .map(async move |dep| {
+            .map(async move |dep| -> ServiceStatus {
                 let services = self.live_services.read().await;
-                let dep_service = services
-                    .get(*self.indexes.get(dep).expect("This should nevel happen"))
-                    .unwrap()
-                    .read()
-                    .await;
-                dep_service.wait_on_status().await
+                let dep_service_rw = services
+                    .get(*self.indexes.get(dep).expect("This should never happen"))
+                    .unwrap();
+                let status = {
+                    let dep_service = dep_service_rw.read().await;
+                    dep_service.get_status().await
+                };
+                if let Some(status) = status {
+                    status
+                } else {
+                    let notifier = {
+                        let dep_service = dep_service_rw.read().await;
+                        dep_service.wait_on_status()
+                    };
+                    notifier.notified().await;
+                    let dep_service = dep_service_rw.read().await;
+                    dep_service.get_status().await;
+                    status.unwrap()
+                }
             })
             .collect();
 

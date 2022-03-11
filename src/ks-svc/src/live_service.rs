@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_pidfd::PidFd;
 use chrono::prelude::*;
 use kansei_core::{
@@ -5,6 +7,7 @@ use kansei_core::{
     types::ScriptConfig,
 };
 use tokio::sync::{
+    futures::Notified,
     Mutex,
     Notify,
 };
@@ -23,7 +26,7 @@ pub struct LiveService {
     pub updated_node: Option<Node>,
     pub status: Mutex<ServiceStatus>,
     pub status_changed: Option<DateTime<Local>>,
-    pub wait: Notify,
+    pub wait: Arc<Notify>,
     // Skip starting and stopping values here
     pub last_status: Option<ServiceStatus>,
     // first element for Oneshot::start and Longrun::run
@@ -41,7 +44,7 @@ impl LiveService {
             updated_node: None,
             status: Mutex::new(ServiceStatus::Reset),
             status_changed: None,
-            wait: Notify::new(),
+            wait: Arc::new(Notify::new()),
             last_status: None,
             config: None,
             environment: None,
@@ -67,11 +70,16 @@ impl LiveService {
         self.wait.notify_waiters();
     }
 
-    pub async fn wait_on_status(&self) -> ServiceStatus {
+    pub async fn get_status(&self) -> Option<ServiceStatus> {
         let status = self.status.lock().await;
         if *status != ServiceStatus::Up && *status != ServiceStatus::Down {
-            self.wait.notified().await;
+            Some(status.clone())
+        } else {
+            None
         }
-        status.clone()
+    }
+
+    pub fn wait_on_status(&self) -> Arc<Notify> {
+        self.wait.clone()
     }
 }
