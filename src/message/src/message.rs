@@ -15,7 +15,7 @@ use tokio::{
 
 use crate::get_host_address;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
     ServiceIsUp(bool, String),
 }
@@ -39,24 +39,28 @@ impl Message {
         self,
         socket: &str,
     ) -> Result<Vec<u8>, Error> {
-        let stream = UnixStream::connect(socket)
+        let mut stream = UnixStream::connect(socket)
             .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
             .await?;
 
-        loop {
-            let _ready = stream
-                .writable()
-                .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
-                .await?;
+        let _ready = stream
+            .writable()
+            .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
+            .await?;
 
-            match stream.try_write(
-                &bincode::serialize(&self).whatever_context("error serializing message")?,
-            ) {
-                Ok(_) => break,
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => {
-                    whatever!("error sending message");
-                }
+        let message = serde_json::to_vec(&self).whatever_context("error serializing message")?;
+        match stream.try_write(&message) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => {
+                whatever!("error sending message: {}", e);
+            }
+        }
+        match stream.try_write("\n".as_bytes()) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => {
+                whatever!("error sending message: {}", e);
             }
         }
 
@@ -72,8 +76,8 @@ impl Message {
                 Ok(size) if size == 0 => break,
                 Ok(size) => buf.reserve(buf.len() + size),
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => {
-                    whatever!("error sending message");
+                Err(e) => {
+                    whatever!("error sending message: {}", e);
                 }
             }
         }
