@@ -1,5 +1,7 @@
 use std::{
     collections::HashMap,
+    io,
+    path::Path,
     process::Stdio,
     sync::Arc,
 };
@@ -10,17 +12,16 @@ use kansei_core::{
     graph::DependencyGraph,
     types::Service,
 };
+use kansei_message::Message;
 use tokio::{
     fs::{
         self,
         File,
     },
     io::AsyncWriteExt,
+    net::UnixListener,
     process::Command,
-    sync::{
-        RwLock,
-        RwLockWriteGuard,
-    },
+    sync::RwLock,
 };
 
 use crate::{
@@ -166,6 +167,32 @@ impl LiveServiceGraph {
         Ok(())
     }
 
+    async fn get_status(
+        &self,
+        name: &str,
+    ) -> ServiceStatus {
+        let services = self.live_services.read().await;
+        let dep_service_rw = services
+            .get(*self.indexes.get(name).expect("This should never happen"))
+            .unwrap();
+        let status = {
+            let dep_service = dep_service_rw.read().await;
+            dep_service.get_status().await
+        };
+        if let Some(status) = status {
+            status
+        } else {
+            let notifier = {
+                let dep_service = dep_service_rw.read().await;
+                dep_service.wait_on_status()
+            };
+            notifier.notified().await;
+            let dep_service = dep_service_rw.read().await;
+            dep_service.get_status().await;
+            status.unwrap()
+        }
+    }
+
     async fn wait_on_deps(
         &self,
         live_service: Arc<RwLock<LiveService>>,
@@ -176,28 +203,7 @@ impl LiveServiceGraph {
         };
         let futures: Vec<_> = dependencies
             .iter()
-            .map(async move |dep| -> ServiceStatus {
-                let services = self.live_services.read().await;
-                let dep_service_rw = services
-                    .get(*self.indexes.get(dep).expect("This should never happen"))
-                    .unwrap();
-                let status = {
-                    let dep_service = dep_service_rw.read().await;
-                    dep_service.get_status().await
-                };
-                if let Some(status) = status {
-                    status
-                } else {
-                    let notifier = {
-                        let dep_service = dep_service_rw.read().await;
-                        dep_service.wait_on_status()
-                    };
-                    notifier.notified().await;
-                    let dep_service = dep_service_rw.read().await;
-                    dep_service.get_status().await;
-                    status.unwrap()
-                }
-            })
+            .map(async move |dep| -> ServiceStatus { self.get_status(dep).await })
             .collect();
 
         for future in futures {
