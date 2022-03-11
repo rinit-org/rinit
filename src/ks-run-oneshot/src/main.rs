@@ -19,6 +19,9 @@ async fn main() -> Result<()> {
     println!("success: {}", success);
 
     //TODO: notify svc
+    let message = Message::ServiceIsUp(true, "myser".to_string());
+    // TODO: log this
+    message.send().await.unwrap();
 
     Ok(())
 }

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 kansei-core = { path = "../core" }
 kansei-exec = { path = "../exec" }
+kansei-message = { path = "../message" }
 anyhow = "1.0.55"
 async-pidfd = "0.1.4"
 serde_json = "1.0.79"
