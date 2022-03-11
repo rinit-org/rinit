@@ -85,7 +85,6 @@ impl DependencyGraph {
             self.enabled_services.insert(index);
             let dependencies = self.nodes[index].service.dependencies().to_owned();
             for dep in dependencies {
-                println!("{dep}");
                 self.get_node_from_name(&dep).add_dependent(index);
             }
         });
