@@ -23,7 +23,7 @@ use kansei_exec::{
     exec_script,
     pidfd_send_signal,
     run_short_lived_script,
-    signal_wait,
+    signal_wait::signal_wait_fun,
 };
 use kansei_message::Message;
 use tokio::{
@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
     )?;
     let mut time_tried = 0;
     loop {
-        let script_res = start_process(&longrun.run, signal_wait()).await?;
+        let script_res = start_process(&longrun.run, signal_wait_fun()).await?;
 
         match script_res {
             ScriptResult::Exited(_) => {
@@ -124,14 +124,14 @@ async fn main() -> Result<()> {
                     break;
                 }
                 if let Some(finish_script) = &longrun.finish {
-                    let _ = run_short_lived_script(finish_script, signal_wait()).await;
+                    let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                 }
             }
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
                 let message = Message::ServiceIsUp(true, longrun.name.clone());
                 message.send().await.context("unable to notify svc")?;
-                let res = supervise(&pidfd, &longrun.run, signal_wait()).await?;
+                let res = supervise(&pidfd, &longrun.run, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
                     ScriptResult::SignalReceived => {
@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
                         )
                         .await?;
                         if let Some(finish_script) = &longrun.finish {
-                            let _ = run_short_lived_script(finish_script, signal_wait()).await;
+                            let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                         }
                         break;
                     }

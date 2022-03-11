@@ -20,15 +20,15 @@ lazy_static! {
 }
 type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
 
-pub fn signal_wait() -> Box<dyn FnMut() -> WaitFn> {
-    Box::new(|| {
-        Box::pin(tokio::spawn(async {
-            let mut sigint = SIGINT.lock().await;
-            let mut sigterm = SIGTERM.lock().await;
-            select! {
-                _ = sigint.recv() => {},
-                _ = sigterm.recv() => {},
-            };
-        }))
-    })
+pub fn signal_wait_fun() -> Box<dyn FnMut() -> WaitFn> {
+    Box::new(|| Box::pin(tokio::spawn(async { signal_wait().await })))
+}
+
+pub async fn signal_wait() {
+    let mut sigint = SIGINT.lock().await;
+    let mut sigterm = SIGTERM.lock().await;
+    select! {
+        _ = sigint.recv() => {},
+        _ = sigterm.recv() => {},
+    };
 }
