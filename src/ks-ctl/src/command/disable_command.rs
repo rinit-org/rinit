@@ -28,7 +28,7 @@ impl DisableCommand {
         let graph_file = config.get_graph_filename();
         ensure!(graph_file.exists(), "kansei has not been initialized yet");
         let mut graph: DependencyGraph = serde_json::from_slice(
-            &mut fs::read(&graph_file)
+            &fs::read(&graph_file)
                 .with_context(|| format!("unable to read graph from file {:?}", graph_file))?[..],
         )
         .context("unable to deserialize the dependency graph")?;

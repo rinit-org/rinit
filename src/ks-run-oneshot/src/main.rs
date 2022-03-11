@@ -13,8 +13,8 @@ use tokio::fs;
 async fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
-    let script: Script = serde_json::from_slice(&mut fs::read(args.next().unwrap()).await?)?;
-    let success = run_short_lived_script(&script, signal_wait_fun()).await?;
+    let script: Script = serde_json::from_slice(&fs::read(args.next().unwrap()).await?)?;
+    let _success = run_short_lived_script(&script, signal_wait_fun()).await?;
 
     //TODO: notify svc
     let message = Message::ServiceIsUp(true, "myser".to_string());

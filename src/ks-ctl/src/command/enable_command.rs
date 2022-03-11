@@ -30,7 +30,7 @@ impl EnableCommand {
         let graph_file = config.get_graph_filename();
         let mut graph: DependencyGraph = if graph_file.exists() {
             serde_json::from_slice(
-                &mut fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
+                &fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
                 )?[..],
             )
             .context("unable to deserialize the dependency graph")?

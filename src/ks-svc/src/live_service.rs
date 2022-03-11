@@ -7,7 +7,6 @@ use kansei_core::{
     types::ScriptConfig,
 };
 use tokio::sync::{
-    futures::Notified,
     Mutex,
     Notify,
 };

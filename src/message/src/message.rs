@@ -9,7 +9,7 @@ use snafu::{
     Snafu,
 };
 use tokio::{
-    io::{self,},
+    io,
     net::UnixStream,
 };
 
@@ -39,7 +39,7 @@ impl Message {
         self,
         socket: &str,
     ) -> Result<Vec<u8>, Error> {
-        let mut stream = UnixStream::connect(socket)
+        let stream = UnixStream::connect(socket)
             .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
             .await?;
 

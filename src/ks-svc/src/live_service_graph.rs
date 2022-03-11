@@ -64,11 +64,10 @@ impl LiveServiceGraph {
             .clone()
             .into_iter()
             .map(|live_service| {
-                let live_service = live_service.to_owned();
                 tokio::spawn(async move {
                     let should_start = {
                         let live_service = live_service.read().await;
-                        live_service.node.service.should_start().clone()
+                        live_service.node.service.should_start()
                     };
                     if should_start {
                         self.start_service_impl(live_service.clone()).await;

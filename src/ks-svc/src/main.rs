@@ -9,14 +9,8 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{
-    Context,
-    Result,
-};
-use kansei_core::{
-    config::Config,
-    graph::DependencyGraph,
-};
+use anyhow::Result;
+use kansei_core::config::Config;
 use kansei_exec::signal_wait;
 use live_service_graph::LiveServiceGraph;
 use tokio::{
@@ -32,7 +26,7 @@ lazy_static! {
         RwLock::new(unsafe { Arc::new_zeroed().assume_init() });
     pub static ref LIVE_GRAPH: LiveServiceGraph = LiveServiceGraph::new(
         serde_json::from_slice(
-            &mut fs::read(&*CONFIG.try_read().unwrap().get_graph_filename()).unwrap()
+            &fs::read(&*CONFIG.try_read().unwrap().get_graph_filename()).unwrap()
         )
         .unwrap()
     )
