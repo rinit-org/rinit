@@ -130,7 +130,8 @@ async fn main() -> Result<()> {
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
                 let message = Message::ServiceIsUp(true, longrun.name.clone());
-                message.send().await.context("unable to notify svc")?;
+                // TODO: log this
+                message.send().await.context("unable to notify svc");
                 let res = supervise(&pidfd, &longrun.run, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -155,7 +156,8 @@ async fn main() -> Result<()> {
     }
 
     let message = Message::ServiceIsUp(false, longrun.name.clone());
-    message.send().await.context("unable to notify svc")?;
+    // TODO: log this
+    message.send().await.context("unable to notify svc");
 
     Ok(())
 }
