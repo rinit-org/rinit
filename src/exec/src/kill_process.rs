@@ -17,9 +17,9 @@ use tokio::{
 use crate::pidfd_send_signal;
 
 pub async fn kill_process(
-    pidfd: AsyncFd<PidFd>,
-    timeout_kill: u32,
+    pidfd: &AsyncFd<PidFd>,
     down_signal: i32,
+    timeout_kill: u32,
 ) -> Result<()> {
     pidfd_send_signal(pidfd.as_raw_fd(), down_signal)
         .with_context(|| format!("unable to send signal {:?}", down_signal))?;

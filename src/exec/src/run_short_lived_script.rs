@@ -69,11 +69,11 @@ where
                 }
             }
             ScriptResult::SignalReceived => {
-                kill_process(pidfd, script.timeout_kill, script.down_signal).await?;
+                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
                 break false;
             }
             ScriptResult::TimedOut => {
-                kill_process(pidfd, script.timeout_kill, script.down_signal).await?;
+                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
             }
         }
 
