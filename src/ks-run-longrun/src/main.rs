@@ -3,7 +3,6 @@
 use std::{
     env,
     future::Future,
-    os::unix::prelude::AsRawFd,
     path::Path,
     pin::Pin,
     process::ExitStatus,
@@ -21,7 +20,7 @@ use kansei_core::types::{
 };
 use kansei_exec::{
     exec_script,
-    pidfd_send_signal,
+    kill_process,
     run_short_lived_script,
     signal_wait::signal_wait_fun,
 };
@@ -33,8 +32,6 @@ use tokio::{
     task::JoinError,
     time::timeout,
 };
-
-const SIGKILL: i32 = 9;
 
 enum ScriptResult {
     Exited(ExitStatus),
@@ -68,26 +65,10 @@ where
             }
         }
         _ = wait() => {
-            stop_process(&pidfd, script.down_signal, script.timeout_kill as u64).await?;
+            kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
             ScriptResult::SignalReceived
         }
     })
-}
-
-async fn stop_process(
-    pidfd: &AsyncFd<PidFd>,
-    down_signal: i32,
-    timeout_kill: u64,
-) -> Result<()> {
-    pidfd_send_signal(pidfd.as_raw_fd(), down_signal)
-        .with_context(|| format!("unable to send signal {:?}", down_signal))?;
-    let timeout_res = timeout(Duration::from_millis(timeout_kill), pidfd.readable()).await;
-    if timeout_res.is_err() {
-        pidfd_send_signal(pidfd.as_raw_fd(), SIGKILL).context("unable to send signal SIGKILL")?;
-    }
-    pidfd.get_ref().wait().context("unable to call waitid")?;
-
-    Ok(())
 }
 
 async fn supervise<F>(
@@ -136,12 +117,8 @@ async fn main() -> Result<()> {
                     ScriptResult::Exited(_) => {}
                     ScriptResult::SignalReceived => {
                         // stop running
-                        stop_process(
-                            &pidfd,
-                            longrun.run.down_signal,
-                            longrun.run.timeout_kill as u64,
-                        )
-                        .await?;
+                        kill_process(&pidfd, longrun.run.down_signal, longrun.run.timeout_kill)
+                            .await?;
                         if let Some(finish_script) = &longrun.finish {
                             let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                         }
