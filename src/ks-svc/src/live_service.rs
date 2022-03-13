@@ -82,9 +82,10 @@ impl LiveService {
                 }
                 Service::Virtual(_) => unreachable!(),
             } as u64);
-            timeout(service_timeout, self.wait.wait_no_relock(state))
-                .await
-                .unwrap();
+            if let Err(_) = timeout(service_timeout, self.wait.wait_no_relock(state)).await {
+                // the wait timed out
+                return ServiceState::Down;
+            }
             state = self.state.lock().await;
         }
         state.clone()
