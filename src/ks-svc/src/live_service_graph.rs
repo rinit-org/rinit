@@ -190,20 +190,7 @@ impl LiveServiceGraph {
             .iter()
             .map(async move |dep| -> (&str, ServiceState) {
                 let dep_service = self.get_service(dep).await;
-                (
-                    dep,
-                    timeout(
-                        Duration::from_millis(match &dep_service.node.service {
-                            Service::Bundle(_) => unreachable!(),
-                            Service::Longrun(longrun) => longrun.run.timeout,
-                            Service::Oneshot(oneshot) => oneshot.start.timeout,
-                            Service::Virtual(_) => unreachable!(),
-                        } as u64),
-                        dep_service.get_final_state(),
-                    )
-                    .await
-                    .unwrap(),
-                )
+                (dep, dep_service.get_final_state().await)
             })
             .collect();
 

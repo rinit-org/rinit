@@ -1,9 +1,15 @@
+use std::time::Duration;
+
 use async_condvar_fair::Condvar;
 use async_pidfd::PidFd;
-use kansei_core::graph::Node;
+use kansei_core::{
+    graph::Node,
+    types::Service,
+};
 use tokio::{
     io::unix::AsyncFd,
     sync::Mutex,
+    time::timeout,
 };
 
 #[derive(PartialEq, Debug, Clone)]
@@ -49,7 +55,36 @@ impl LiveService {
             ServiceState::Starting | ServiceState::Stopping => true,
             _ => false,
         } {
-            self.wait.wait_no_relock(state).await;
+            let service_timeout = Duration::from_millis(match &self.node.service {
+                Service::Bundle(_) => unreachable!(),
+                Service::Longrun(longrun) => {
+                    if *state == ServiceState::Starting {
+                        longrun.run.timeout * longrun.run.max_deaths as u32
+                    } else {
+                        longrun.run.timeout_kill
+                            + if let Some(finish) = &longrun.finish {
+                                finish.get_maximum_time()
+                            } else {
+                                0
+                            }
+                    }
+                }
+                Service::Oneshot(oneshot) => {
+                    if *state == ServiceState::Starting {
+                        oneshot.start.get_maximum_time()
+                    } else {
+                        if let Some(stop) = &oneshot.stop {
+                            stop.get_maximum_time()
+                        } else {
+                            0
+                        }
+                    }
+                }
+                Service::Virtual(_) => unreachable!(),
+            } as u64);
+            timeout(service_timeout, self.wait.wait_no_relock(state))
+                .await
+                .unwrap();
             state = self.state.lock().await;
         }
         state.clone()

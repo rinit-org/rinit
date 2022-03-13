@@ -77,4 +77,8 @@ impl Script {
             notify: None,
         }
     }
+
+    pub fn get_maximum_time(&self) -> u32 {
+        (self.timeout + self.timeout_kill) * self.max_deaths as u32
+    }
 }
