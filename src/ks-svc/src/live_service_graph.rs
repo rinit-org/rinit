@@ -99,16 +99,25 @@ impl LiveServiceGraph {
         live_service: Arc<LiveService>,
     ) -> Result<()> {
         let mut state = live_service.state.lock().await;
+        if *state == ServiceState::Up {
+            return Ok(());
+        }
         if *state == ServiceState::Stopping {
             live_service.wait.wait_no_relock(state).await;
             state = live_service.state.lock().await;
         }
         if *state != ServiceState::Starting {
             *state = ServiceState::Starting;
+            drop(state);
             self.start_dependencies(&live_service).await?;
             self.start_service_impl(live_service.clone()).await?;
         }
-
+        let state = live_service.get_final_state().await;
+        ensure!(
+            state == ServiceState::Up,
+            "service {} failed to start",
+            live_service.node.name(),
+        );
         Ok(())
     }
 
