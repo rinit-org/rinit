@@ -4,7 +4,6 @@ use std::{
     os::unix::prelude::AsRawFd,
     process::Stdio,
     sync::Arc,
-    time::Duration,
 };
 
 use anyhow::{
@@ -30,7 +29,10 @@ use tokio::{
     },
     process::Command,
     sync::RwLock,
-    time::timeout,
+};
+use tracing::{
+    error,
+    warn,
 };
 
 use crate::{
@@ -74,13 +76,20 @@ impl LiveServiceGraph {
                     if live_service.node.service.should_start() {
                         // TODO: Generate an order of the services to start and use
                         // start_service_impl
-                        self.start_service(live_service.clone()).await;
+                        let res = self.start_service(live_service.clone()).await;
+                        if let Err(err) = res {
+                            warn!("{err:?}");
+                        }
                     }
                 })
             })
             .collect();
         for future in futures {
-            future.await.unwrap();
+            if let Err(err) = future.await {
+                if err.is_panic() {
+                    error!("{err:?}");
+                }
+            }
         }
     }
 

@@ -2,6 +2,7 @@ use std::io;
 
 use kansei_message::Message;
 use tokio::net::UnixStream;
+use tracing::trace;
 
 use crate::{
     live_service::ServiceState,
@@ -19,6 +20,7 @@ impl MessageHandler {
     ) {
         let buf = Self::read(&stream).await;
         let message: Message = serde_json::from_slice(&buf).unwrap();
+        trace!("Received message {message:?}");
         match message {
             Message::ServiceIsUp(up, name) => {
                 let live_service = self.graph.get_service(&name).await;
