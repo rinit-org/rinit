@@ -9,6 +9,7 @@ kansei-core = { path = "../core" }
 kansei-exec = { path = "../exec" }
 kansei-message = { path = "../message" }
 anyhow = "1.0.56"
+async-condvar-fair = { version = "0.1.0", features = ["tokio"] }
 async-pidfd = "0.1.4"
 async-recursion = "1.0.0"
 chrono = "0.4.19"

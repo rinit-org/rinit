@@ -1,18 +1,13 @@
-use std::sync::Arc;
-
+use async_condvar_fair::Condvar;
 use async_pidfd::PidFd;
-use chrono::prelude::*;
-use kansei_core::{
-    graph::Node,
-    types::ScriptConfig,
-};
-use tokio::sync::{
-    Mutex,
-    Notify,
+use kansei_core::graph::Node;
+use tokio::{
+    io::unix::AsyncFd,
+    sync::Mutex,
 };
 
-#[derive(Clone, PartialEq)]
-pub enum ServiceStatus {
+#[derive(PartialEq, Debug, Clone)]
+pub enum ServiceState {
     Reset,
     Up,
     Down,
@@ -20,65 +15,43 @@ pub enum ServiceStatus {
     Stopping,
 }
 
+pub struct LiveServiceStatus {
+    pub pidfd: Option<AsyncFd<PidFd>>,
+    pub remove: bool,
+    pub new: Option<Box<LiveService>>,
+}
+
 pub struct LiveService {
     pub node: Node,
-    pub updated_node: Option<Node>,
-    pub status: Mutex<ServiceStatus>,
-    pub status_changed: Option<DateTime<Local>>,
-    pub wait: Arc<Notify>,
-    // Skip starting and stopping values here
-    pub last_status: Option<ServiceStatus>,
-    // first element for Oneshot::start and Longrun::run
-    // second element for Oneshot::stop and Longrun::finish
-    pub config: Option<(ScriptConfig, ScriptConfig)>,
-    pub environment: Option<(ScriptConfig, ScriptConfig)>,
-    pub remove: bool,
-    pub supervisor: Option<PidFd>,
+    pub state: Mutex<ServiceState>,
+    pub wait: Condvar,
+    pub status: Mutex<LiveServiceStatus>,
 }
 
 impl LiveService {
     pub fn new(node: Node) -> Self {
         Self {
             node,
-            updated_node: None,
-            status: Mutex::new(ServiceStatus::Reset),
-            status_changed: None,
-            wait: Arc::new(Notify::new()),
-            last_status: None,
-            config: None,
-            environment: None,
-            remove: false,
-            supervisor: None,
+            state: Mutex::new(ServiceState::Reset),
+            wait: Condvar::new(),
+            status: Mutex::new(LiveServiceStatus {
+                pidfd: None,
+                remove: false,
+                new: None,
+            }),
         }
     }
 
-    pub async fn change_status(
-        &mut self,
-        new_status: ServiceStatus,
-    ) {
-        let mut status = self.status.lock().await;
-        match *status {
-            ServiceStatus::Starting => {}
-            ServiceStatus::Stopping => {}
-            _ => {
-                self.last_status = Some(status.clone());
-            }
+    /// Wait until we have one of the 3 final states
+    pub async fn get_final_state(&self) -> ServiceState {
+        let mut state = self.state.lock().await;
+        if match *state {
+            ServiceState::Starting | ServiceState::Stopping => true,
+            _ => false,
+        } {
+            self.wait.wait_no_relock(state).await;
+            state = self.state.lock().await;
         }
-        *status = new_status;
-        self.status_changed = Some(chrono::offset::Local::now());
-        self.wait.notify_waiters();
-    }
-
-    pub async fn get_status(&self) -> Option<ServiceStatus> {
-        let status = self.status.lock().await;
-        if *status != ServiceStatus::Up && *status != ServiceStatus::Down {
-            Some(status.clone())
-        } else {
-            None
-        }
-    }
-
-    pub fn wait_on_status(&self) -> Arc<Notify> {
-        self.wait.clone()
+        state.clone()
     }
 }
