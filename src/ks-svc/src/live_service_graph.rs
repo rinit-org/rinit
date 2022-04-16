@@ -15,6 +15,7 @@ use async_pidfd::PidFd;
 use async_recursion::async_recursion;
 use kansei_core::{
     graph::DependencyGraph,
+    service_state::ServiceState,
     types::Service,
 };
 use kansei_exec::pidfd_send_signal;
@@ -36,16 +37,13 @@ use tracing::{
 };
 
 use crate::{
-    live_service::{
-        LiveService,
-        ServiceState,
-    },
+    live_service::LiveService,
     CONFIG,
 };
 
 pub struct LiveServiceGraph {
-    indexes: HashMap<String, usize>,
-    live_services: RwLock<Vec<Arc<LiveService>>>,
+    pub indexes: HashMap<String, usize>,
+    pub live_services: RwLock<Vec<Arc<LiveService>>>,
 }
 
 impl LiveServiceGraph {
@@ -92,19 +90,20 @@ impl LiveServiceGraph {
             }
         }
     }
-
     #[async_recursion]
-    async fn start_service(
+    pub async fn start_service(
         &self,
         live_service: Arc<LiveService>,
     ) -> Result<()> {
-        let mut state = live_service.state.lock().await;
+        let mut state = live_service.state.clone().lock_owned().await;
         if *state == ServiceState::Up {
             return Ok(());
         }
-        if *state == ServiceState::Stopping {
-            live_service.wait.wait_no_relock(state).await;
-            state = live_service.state.lock().await;
+        while *state == ServiceState::Stopping {
+            state = live_service
+                .wait
+                .wait((state, live_service.state.clone()))
+                .await;
         }
         if *state != ServiceState::Starting {
             *state = ServiceState::Starting;
@@ -132,9 +131,7 @@ impl LiveServiceGraph {
             .iter()
             .map(async move |dep| -> Result<()> {
                 let services = self.live_services.read().await;
-                let dep_service = services
-                    .get(*self.indexes.get(dep).expect("This should nevel happen"))
-                    .unwrap();
+                let dep_service = services.get(*self.indexes.get(dep).unwrap()).unwrap();
                 if match dep_service.get_final_state().await {
                     ServiceState::Reset | ServiceState::Down => true,
                     _ => false,

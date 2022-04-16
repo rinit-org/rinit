@@ -1,9 +1,13 @@
-use std::time::Duration;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
 use async_condvar_fair::Condvar;
 use async_pidfd::PidFd;
 use kansei_core::{
     graph::Node,
+    service_state::ServiceState,
     types::Service,
 };
 use tokio::{
@@ -11,15 +15,6 @@ use tokio::{
     sync::Mutex,
     time::timeout,
 };
-
-#[derive(PartialEq, Debug, Clone)]
-pub enum ServiceState {
-    Reset,
-    Up,
-    Down,
-    Starting,
-    Stopping,
-}
 
 pub struct LiveServiceStatus {
     pub pidfd: Option<AsyncFd<PidFd>>,
@@ -29,7 +24,7 @@ pub struct LiveServiceStatus {
 
 pub struct LiveService {
     pub node: Node,
-    pub state: Mutex<ServiceState>,
+    pub state: Arc<Mutex<ServiceState>>,
     pub wait: Condvar,
     pub status: Mutex<LiveServiceStatus>,
 }
@@ -38,7 +33,7 @@ impl LiveService {
     pub fn new(node: Node) -> Self {
         Self {
             node,
-            state: Mutex::new(ServiceState::Reset),
+            state: Arc::new(Mutex::new(ServiceState::Reset)),
             wait: Condvar::new(),
             status: Mutex::new(LiveServiceStatus {
                 pidfd: None,
