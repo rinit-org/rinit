@@ -64,24 +64,27 @@ impl Message {
             }
         }
 
-        let mut buf = Vec::new();
-        buf.reserve(2048);
+        let mut res = Vec::new();
         loop {
-            let _ready = stream
-                .readable()
-                .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
-                .await?;
+            stream.readable().await.unwrap();
 
-            match stream.try_read(buf.as_mut_slice()) {
+            let mut buf = [0; 1024];
+            match stream.try_read(&mut buf) {
                 Ok(size) if size == 0 => break,
-                Ok(size) => buf.reserve(buf.len() + size),
+                Ok(_) => {
+                    let index = buf.iter().position(|&c| c == 10);
+                    res.extend_from_slice(&buf[..index.unwrap_or(buf.len())]);
+                    if index.is_some() {
+                        break;
+                    }
+                }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => {
-                    whatever!("error sending message: {}", e);
+                Err(_) => {
+                    todo!()
                 }
             }
         }
 
-        Ok(buf)
+        Ok(res)
     }
 }
