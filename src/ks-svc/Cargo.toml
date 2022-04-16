@@ -19,7 +19,8 @@ lazy_static = "1.4.0"
 libc = "0.2.119"
 nix = "0.23.1"
 serde_json = "1.0.79"
-tokio = "1.17.0"
+tokio = { version = "1.17.0", features = ["full"] }
+tokio-stream = "0.1.8"
 tracing = "0.1.32"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }

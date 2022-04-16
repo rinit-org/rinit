@@ -221,7 +221,7 @@ impl LiveServiceGraph {
     }
 
     #[async_recursion]
-    async fn stop_service(
+    pub async fn stop_service(
         &self,
         live_service: Arc<LiveService>,
     ) -> Result<()> {

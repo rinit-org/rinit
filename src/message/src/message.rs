@@ -18,6 +18,9 @@ use crate::get_host_address;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
     ServiceIsUp(bool, String),
+    ServicesStatus(Vec<String>),
+    StartServices(Vec<String>),
+    StopServices(Vec<String>),
 }
 
 #[derive(Debug, Snafu)]
