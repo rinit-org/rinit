@@ -1,0 +1,21 @@
+[package]
+name = "rinit-ctl"
+version = "0.1.0"
+authors = ["Danilo Spinella <oss@danyspin97.org>"]
+edition = "2021"
+
+[dependencies]
+rinit-ipc= { path = "../ipc" }
+rinit-parser = { path = "../parser" }
+rinit-service = { path = "../service" }
+rinit-supervision = { path = "../supervision" }
+anyhow = "1.0.56"
+clap = { version = "3.1.6", features = ["derive"] }
+itertools = "0.10.3"
+serde_json = "1.0.79"
+snafu = { version = "0.7.0", features = ["futures"] }
+tokio = "1.17.0"
+
+[[bin]]
+name = "rctl"
+path = "src/main.rs"

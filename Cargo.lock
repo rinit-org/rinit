@@ -398,121 +398,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
-name = "kansei-core"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde",
- "snafu",
- "toml",
- "xdg",
-]
-
-[[package]]
-name = "kansei-exec"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-pidfd",
- "kansei-core",
- "lazy_static",
- "libc",
- "nix",
- "tokio",
-]
-
-[[package]]
-name = "kansei-message"
-version = "0.1.0"
-dependencies = [
- "kansei-core",
- "lazy_static",
- "nix",
- "serde",
- "serde_json",
- "snafu",
- "tokio",
-]
-
-[[package]]
-name = "kansei-parser"
-version = "0.1.0"
-dependencies = [
- "futures",
- "kansei-core",
- "nix",
- "snafu",
- "tokio",
-]
-
-[[package]]
-name = "ks-ctl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "itertools",
- "kansei-core",
- "kansei-message",
- "kansei-parser",
- "serde_json",
- "snafu",
- "tokio",
-]
-
-[[package]]
-name = "ks-run-longrun"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-pidfd",
- "kansei-core",
- "kansei-exec",
- "kansei-message",
- "lazy_static",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "ks-run-oneshot"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-pidfd",
- "kansei-core",
- "kansei-exec",
- "kansei-message",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "ks-svc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-condvar-fair",
- "async-pidfd",
- "async-recursion",
- "chrono",
- "clap",
- "futures",
- "kansei-core",
- "kansei-exec",
- "kansei-message",
- "lazy_static",
- "libc",
- "nix",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,6 +759,81 @@ name = "regex-syntax"
 version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
+
+[[package]]
+name = "rinit-ctl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "itertools",
+ "rinit-ipc",
+ "rinit-parser",
+ "rinit-service",
+ "rinit-supervision",
+ "serde_json",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
+name = "rinit-ipc"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "nix",
+ "rinit-service",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
+name = "rinit-parser"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "nix",
+ "rinit-service",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
+name = "rinit-service"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "snafu",
+ "toml",
+ "xdg",
+]
+
+[[package]]
+name = "rinit-supervision"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-condvar-fair",
+ "async-pidfd",
+ "async-recursion",
+ "chrono",
+ "clap",
+ "futures",
+ "lazy_static",
+ "libc",
+ "nix",
+ "rinit-ipc",
+ "rinit-service",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "ryu"

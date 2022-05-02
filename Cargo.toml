@@ -1,12 +1,9 @@
 [workspace]
 
 members = [
-    "src/core",
-    "src/ks-ctl",
-    "src/ks-svc",
-    "src/parser",
-    "src/exec",
-    "src/ks-run-longrun",
-    "src/ks-run-oneshot",
-    "src/message",
+    "ctl",
+    "ipc",
+    "parser",
+    "supervision",
+    "service",
 ]
