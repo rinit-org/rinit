@@ -16,7 +16,7 @@ pub struct DisableCommand {
 }
 
 impl DisableCommand {
-    pub async fn run(
+    pub fn run(
         self,
         config: Config,
     ) -> Result<()> {

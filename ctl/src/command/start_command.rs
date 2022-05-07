@@ -17,7 +17,7 @@ pub struct StartCommand {
 }
 
 impl StartCommand {
-    pub async fn run(
+    pub fn run(
         self,
         _config: Config,
     ) -> Result<()> {
@@ -28,7 +28,7 @@ impl StartCommand {
         );
 
         let message = Message::StartServices(self.services);
-        let reply: Reply = serde_json::from_slice(&message.send().await?).unwrap();
+        let reply: Reply = serde_json::from_slice(&message.send()?).unwrap();
         let res = if let Reply::Result(res) = reply {
             res
         } else {

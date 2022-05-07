@@ -1,16 +1,16 @@
+use std::{
+    io::prelude::*,
+    os::unix::net::UnixStream,
+};
+
 use serde::{
     Deserialize,
     Serialize,
 };
 use snafu::{
-    futures::TryFutureExt,
     whatever,
     ResultExt,
     Snafu,
-};
-use tokio::{
-    io,
-    net::UnixStream,
 };
 
 use crate::get_host_address;
@@ -34,34 +34,26 @@ pub enum Error {
 }
 
 impl Message {
-    pub async fn send(self) -> Result<Vec<u8>, Error> {
-        self.send_to(get_host_address()).await
+    pub fn send(self) -> Result<Vec<u8>, Error> {
+        self.send_to(get_host_address())
     }
 
-    async fn send_to(
+    fn send_to(
         self,
         socket: &str,
     ) -> Result<Vec<u8>, Error> {
-        let stream = UnixStream::connect(socket)
-            .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
-            .await?;
-
-        let _ready = stream
-            .writable()
-            .with_whatever_context(|_| format!("unable to accept connection to {socket}"))
-            .await?;
+        let mut stream = UnixStream::connect(socket)
+            .with_whatever_context(|_| format!("unable to accept connection to {socket}"))?;
 
         let message = serde_json::to_vec(&self).whatever_context("error serializing message")?;
-        match stream.try_write(&message) {
+        match stream.write_all(&message) {
             Ok(_) => {}
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => {
                 whatever!("error sending message: {}", e);
             }
         }
-        match stream.try_write("\n".as_bytes()) {
+        match stream.write("\n".as_bytes()) {
             Ok(_) => {}
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => {
                 whatever!("error sending message: {}", e);
             }
@@ -69,10 +61,8 @@ impl Message {
 
         let mut res = Vec::new();
         loop {
-            stream.readable().await.unwrap();
-
             let mut buf = [0; 1024];
-            match stream.try_read(&mut buf) {
+            match stream.read(&mut buf) {
                 Ok(size) if size == 0 => break,
                 Ok(_) => {
                     let index = buf.iter().position(|&c| c == 10);
@@ -81,7 +71,6 @@ impl Message {
                         break;
                     }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 Err(_) => {
                     todo!()
                 }

@@ -2,16 +2,6 @@ mod command;
 
 use anyhow::Result;
 use clap::Parser;
-use command::{
-    DisableCommand,
-    EnableCommand,
-    ServiceControlCommand,
-    StartCommand,
-    StatusCommand,
-    StopCommand,
-};
-use rinit_service::config::Config;
-
 #[derive(Parser)]
 enum Command {
     Enable(EnableCommand),
@@ -19,8 +9,6 @@ enum Command {
     Status(StatusCommand),
     Start(StartCommand),
     Stop(StopCommand),
-    #[clap(name = "svc")]
-    ServiceControl(ServiceControlCommand),
 }
 
 #[derive(Parser)]
@@ -28,21 +16,25 @@ struct Opts {
     #[clap(subcommand)]
     subcmd: Command,
 }
+use command::{
+    DisableCommand,
+    EnableCommand,
+    StartCommand,
+    StatusCommand,
+    StopCommand,
+};
+use rinit_service::config::Config;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let opts = Opts::parse();
     let config = Config::new(None)?;
 
     match opts.subcmd {
-        Command::Enable(enable_command) => enable_command.run(config).await?,
-        Command::Disable(disable_command) => disable_command.run(config).await?,
-        Command::Status(status_command) => status_command.run(config).await?,
-        Command::Start(start_command) => start_command.run(config).await?,
-        Command::Stop(stop_command) => stop_command.run(config).await?,
-        Command::ServiceControl(service_control_command) => {
-            service_control_command.run(config).await?
-        }
+        Command::Enable(enable_command) => enable_command.run(config)?,
+        Command::Disable(disable_command) => disable_command.run(config)?,
+        Command::Status(status_command) => status_command.run(config)?,
+        Command::Start(start_command) => start_command.run(config)?,
+        Command::Stop(stop_command) => stop_command.run(config)?,
     }
 
     Ok(())

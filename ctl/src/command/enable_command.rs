@@ -18,7 +18,7 @@ pub struct EnableCommand {
 }
 
 impl EnableCommand {
-    pub async fn run(
+    pub fn run(
         self,
         config: Config,
     ) -> Result<()> {
@@ -42,7 +42,6 @@ impl EnableCommand {
             &config.service_directories,
             config.system,
         )
-        .await
         .context("unable to parse services")?;
         graph
             .add_services(self.services, services)

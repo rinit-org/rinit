@@ -17,7 +17,7 @@ pub struct StatusCommand {
 }
 
 impl StatusCommand {
-    pub async fn run(
+    pub fn run(
         self,
         _config: Config,
     ) -> Result<()> {
@@ -28,7 +28,7 @@ impl StatusCommand {
         );
 
         let message = Message::ServicesStatus(self.services);
-        let reply: Reply = serde_json::from_slice(&message.send().await?).unwrap();
+        let reply: Reply = serde_json::from_slice(&message.send()?).unwrap();
         let states = if let Reply::ServicesStates(states) = reply {
             states
         } else {

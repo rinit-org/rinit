@@ -1,4 +1,5 @@
 use std::{
+    fs,
     io,
     path::{
         Path,
@@ -9,13 +10,11 @@ use std::{
 use rinit_service::types::*;
 use snafu::{
     ensure,
-    futures::TryFutureExt,
     Error,
     OptionExt,
     ResultExt,
     Snafu,
 };
-use tokio::fs;
 
 use crate::service::service_builder::*;
 
@@ -45,14 +44,12 @@ unsafe impl Send for ParseServiceError {}
 
 type Result<T, E = ParseServiceError> = std::result::Result<T, E>;
 
-pub async fn parse_service(path: &Path) -> Result<Service> {
-    let file = fs::read_to_string(&path)
-        .with_context(|_| {
-            OpenFileSnafu {
-                path: path.to_owned(),
-            }
-        })
-        .await?;
+pub fn parse_service(path: &Path) -> Result<Service> {
+    let file = fs::read_to_string(&path).with_context(|_| {
+        OpenFileSnafu {
+            path: path.to_owned(),
+        }
+    })?;
     let lines = file
         .split_inclusive('\n')
         .map(|line| line.trim_end())
@@ -133,8 +130,8 @@ mod test {
 
     use super::*;
 
-    #[tokio::test]
-    async fn parse_bundle() -> Result<(), ParseServiceError> {
+    #[test]
+    fn parse_bundle() -> Result<(), ParseServiceError> {
         assert_eq!(
             Service::Bundle(Bundle {
                 name: "foo".to_string(),
@@ -146,26 +143,25 @@ mod test {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/bundle")
                     .as_path(),
-            )
-            .await?
+            )?
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn parse_bundle_no_options() -> Result<(), ParseServiceError> {
+    #[test]
+    fn parse_bundle_no_options() -> Result<(), ParseServiceError> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
             "test/samples/
     bundle_no_options",
         );
-        assert!(parse_service(&path).await.is_err());
+        assert!(parse_service(&path).is_err());
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn parse_oneshot() -> Result<(), ParseServiceError> {
+    #[test]
+    fn parse_oneshot() -> Result<(), ParseServiceError> {
         assert_eq!(
             Service::Oneshot(Oneshot {
                 name: "foo".to_string(),
@@ -177,15 +173,14 @@ mod test {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/oneshot")
                     .as_path()
-            )
-            .await?
+            )?
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn parse_oneshot_with_stop() -> Result<(), ParseServiceError> {
+    #[test]
+    fn parse_oneshot_with_stop() -> Result<(), ParseServiceError> {
         assert_eq!(
             Service::Oneshot(Oneshot {
                 name: "foo".to_string(),
@@ -197,15 +192,14 @@ mod test {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/oneshot_with_stop")
                     .as_path()
-            )
-            .await?
+            )?
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn parse_longrun() -> Result<(), ParseServiceError> {
+    #[test]
+    fn parse_longrun() -> Result<(), ParseServiceError> {
         assert_eq!(
             Service::Longrun(Longrun {
                 name: "foo".to_string(),
@@ -217,22 +211,20 @@ mod test {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/longrun")
                     .as_path()
-            )
-            .await?
+            )?
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn parse_longrun_no_run() {
+    #[test]
+    fn parse_longrun_no_run() {
         assert!(
             parse_service(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("test/samples/longrun_no_run")
                     .as_path()
             )
-            .await
             .is_err()
         );
     }

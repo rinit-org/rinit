@@ -4,12 +4,12 @@ use std::{
     num::ParseIntError,
 };
 
+use nix::sys::signal::Signal;
 use rinit_service::types::{
     InvalidScriptPrefixError,
     Script,
     ScriptConfig,
 };
-use nix::sys::signal::Signal;
 use snafu::{
     OptionExt,
     ResultExt,
