@@ -7,22 +7,20 @@ edition = "2021"
 [dependencies]
 rinit-service = { path = "../service" }
 rinit-ipc = { path = "../ipc" }
-anyhow = "1.0.56"
-async-condvar-fair = { version = "0.1.0", features = ["tokio"] }
+anyhow = { version = "1.0.57", default_features = false }
+async-condvar-fair = { version = "0.2.2", features = ["tokio"] } 
 async-pidfd = "0.1.4"
 async-recursion = "1.0.0"
-chrono = "0.4.19"
-clap = { version = "3.1.6", features = ["derive"] }
+clap = { version = "3.1.18", default_features = false, features = ["derive"] }
 futures = "0.3.21"
 lazy_static = "1.4.0"
-libc = "0.2.119"
-nix = "0.23.1"
-serde_json = "1.0.79"
-tokio = { version = "1.17.0", features = ["full"] }
-tokio-stream = "0.1.8"
-tracing = "0.1.32"
+libc = "0.2.126"
+nix = "0.24.1"
+serde_json = "1.0.81"
+tokio = { version = "1.19.2", features = [ "full" ] }
+tracing = "0.1.35"
 tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.11", features = [ "env-filter" ] }
 
 [[bin]]
 name = "rsvc"
