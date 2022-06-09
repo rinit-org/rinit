@@ -1,5 +1,4 @@
 use std::{
-    env,
     future::Future,
     path::Path,
     pin::Pin,
@@ -85,11 +84,8 @@ where
     })
 }
 
-pub async fn supervise_long_lived_process() -> Result<()> {
-    let mut args = env::args();
-    args.next();
-    let longrun: Longrun =
-        serde_json::from_slice(&fs::read(Path::new(&args.next().unwrap()).join("service")).await?)?;
+pub async fn supervise_long_lived_process(path: &Path) -> Result<()> {
+    let longrun: Longrun = serde_json::from_slice(&fs::read(path.join("service")).await?)?;
     let mut time_tried = 0;
     loop {
         let script_res = start_process(&longrun.run, signal_wait_fun()).await?;
@@ -108,7 +104,7 @@ pub async fn supervise_long_lived_process() -> Result<()> {
                 time_tried = 0;
                 let message = Message::ServiceIsUp(true, longrun.name.clone());
                 // TODO: log this
-                message.send().await.context("unable to notify svc");
+                message.send().context("unable to notify svc");
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -130,7 +126,7 @@ pub async fn supervise_long_lived_process() -> Result<()> {
 
     let message = Message::ServiceIsUp(false, longrun.name.clone());
     // TODO: log this
-    message.send().await.context("unable to notify svc");
+    message.send().context("unable to notify svc");
 
     Ok(())
 }

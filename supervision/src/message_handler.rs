@@ -66,12 +66,16 @@ impl MessageHandler {
                 match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
                 match stream.try_write("\n".as_bytes()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
             }
             Message::StartServices(services) => {
@@ -100,12 +104,16 @@ impl MessageHandler {
                 match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
                 match stream.try_write("\n".as_bytes()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
             }
             Message::StopServices(services) => {
@@ -134,12 +142,16 @@ impl MessageHandler {
                 match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
                 match stream.try_write("\n".as_bytes()) {
                     Ok(_) => {}
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => {}
+                    Err(_) => {
+                        todo!()
+                    }
                 }
             }
         }

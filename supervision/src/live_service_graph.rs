@@ -158,12 +158,12 @@ impl LiveServiceGraph {
             .await
             .with_context(|| format!("while starting service {}", live_service.node.name()))?;
         let res = match &live_service.node.service {
-            Service::Oneshot(oneshot) => Some(("ks-run-oneshot", serde_json::to_vec(&oneshot))),
-            Service::Longrun(longrun) => Some(("ks-run-longrun", serde_json::to_vec(&longrun))),
+            Service::Oneshot(oneshot) => Some(("oneshot", serde_json::to_vec(&oneshot))),
+            Service::Longrun(longrun) => Some(("longrun", serde_json::to_vec(&longrun))),
             Service::Bundle(_) => None,
             Service::Virtual(_) => None,
         };
-        if let Some((exe, ser_res)) = res {
+        if let Some((supervise, ser_res)) = res {
             let config = CONFIG.read().await;
             let runtime_service_dir = config
                 .as_ref()
@@ -177,8 +177,12 @@ impl LiveServiceGraph {
             let buf = ser_res.unwrap();
             file.write(&buf).await.unwrap();
             // TODO: Add logging and remove unwrap
-            let child = Command::new(exe)
-                .args(vec![runtime_service_dir])
+            let child = Command::new("rsvc")
+                .args(vec![
+                    supervise,
+                    "start",
+                    runtime_service_dir.to_str().unwrap(),
+                ])
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())
                 .spawn()

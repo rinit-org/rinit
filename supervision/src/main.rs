@@ -12,8 +12,17 @@ pub mod supervise_short_lived_process;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
 pub use pidfd_send_signal::pidfd_send_signal;
+use rinit_ipc::get_host_address;
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
+pub use supervise_long_lived_process::supervise_long_lived_process;
+pub use supervise_short_lived_process::supervise_short_lived_process;
+use tokio::{
+    fs,
+    net::UnixListener,
+    select,
+    sync::RwLock,
+};
 
 pub mod live_service;
 pub mod live_service_graph;
@@ -21,20 +30,24 @@ pub mod message_handler;
 
 use std::{
     io,
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
     sync::Arc,
 };
 
-use anyhow::Result;
+use anyhow::{
+    Context,
+    Result,
+};
+use clap::{
+    Parser,
+    Subcommand,
+};
 use live_service_graph::LiveServiceGraph;
 use message_handler::MessageHandler;
 use rinit_service::config::Config;
-use tokio::{
-    fs,
-    net::UnixListener,
-    select,
-    sync::RwLock,
-};
 
 #[macro_use]
 extern crate lazy_static;
@@ -51,6 +64,19 @@ lazy_static! {
     .unwrap();
 }
 
+#[derive(Parser)]
+struct Opts {
+    #[clap(subcommand)]
+    subcmd: Subcmd,
+}
+
+#[derive(Subcommand)]
+enum Subcmd {
+    Run,
+    Oneshot { phase: String, path: PathBuf },
+    Longrun { phase: String, path: PathBuf },
+}
+
 fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
     if ret == -1 {
         Err(io::Error::last_os_error())
@@ -60,7 +86,7 @@ fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
 }
 
 pub async fn service_control(config: Config) -> Result<()> {
-    // install_tracing();
+    install_tracing();
     let config = Arc::new(config);
 
     *CONFIG.write().await = config;
@@ -81,6 +107,8 @@ pub async fn service_control(config: Config) -> Result<()> {
             LIVE_GRAPH.stop_all_services().await;
         }
     }
+
+    fs::remove_file(get_host_address()).await.unwrap();
 
     Ok(())
 }
@@ -114,4 +142,26 @@ async fn listen(listener: UnixListener) -> ! {
             handler.handle(stream).await;
         });
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let opts = Opts::parse();
+    match opts.subcmd {
+        Subcmd::Run => {
+            service_control(Config::new(None).unwrap())
+                .await
+                .context("")?
+        }
+        Subcmd::Oneshot { path, phase } => {
+            supervise_short_lived_process(&path, &phase)
+                .await
+                .context("")?
+        }
+        Subcmd::Longrun { path, phase: _ } => {
+            supervise_long_lived_process(&path).await.context("")?
+        }
+    }
+
+    Ok(())
 }

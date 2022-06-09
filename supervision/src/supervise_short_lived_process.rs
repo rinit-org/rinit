@@ -1,4 +1,4 @@
-use std::env;
+use std::path::Path;
 
 use anyhow::Result;
 use rinit_ipc::Message;
@@ -10,12 +10,16 @@ use crate::{
     signal_wait::signal_wait_fun,
 };
 
-pub async fn supervise_short_lived_process() -> Result<()> {
-    let mut args = env::args();
-    // Skip argv[0]
-    args.next();
-    let start = args.next().unwrap() == "start";
-    let oneshot: Oneshot = serde_json::from_slice(&fs::read(args.next().unwrap()).await?)?;
+pub async fn supervise_short_lived_process(
+    path: &Path,
+    phase: &str,
+) -> Result<()> {
+    let start = match phase {
+        "start" => true,
+        "stop" => false,
+        _ => todo!(),
+    };
+    let oneshot: Oneshot = serde_json::from_slice(&fs::read(path).await?)?;
     let success = run_short_lived_script(
         if start {
             &oneshot.start
@@ -28,7 +32,7 @@ pub async fn supervise_short_lived_process() -> Result<()> {
 
     let message = Message::ServiceIsUp(if start { success } else { false }, oneshot.name);
     // TODO: log this
-    message.send().await.unwrap();
+    message.send().unwrap();
 
     Ok(())
 }
