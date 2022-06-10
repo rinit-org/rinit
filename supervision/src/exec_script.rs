@@ -2,10 +2,6 @@ use anyhow::{
     Context,
     Result,
 };
-use rinit_service::types::{
-    Script,
-    ScriptPrefix,
-};
 use libc::{
     self,
     STDERR_FILENO,
@@ -25,6 +21,10 @@ use nix::{
         Group,
         User,
     },
+};
+use rinit_service::types::{
+    Script,
+    ScriptPrefix,
 };
 use tokio::process::{
     Child,
