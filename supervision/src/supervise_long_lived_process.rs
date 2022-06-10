@@ -178,7 +178,7 @@ mod test {
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {
             assert!(matches!(
-                supervise(&pidfd, &script, wait!(1000)).await.unwrap(),
+                supervise(&pidfd, wait!(1000)).await.unwrap(),
                 ScriptResult::Exited(..)
             ));
         }
@@ -192,7 +192,7 @@ mod test {
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {
             assert!(matches!(
-                supervise(&pidfd, &script, wait!(1)).await.unwrap(),
+                supervise(&pidfd, wait!(1)).await.unwrap(),
                 ScriptResult::SignalReceived
             ));
         }
