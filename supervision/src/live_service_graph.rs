@@ -132,10 +132,10 @@ impl LiveServiceGraph {
             .map(async move |dep| -> Result<()> {
                 let services = self.live_services.read().await;
                 let dep_service = services.get(*self.indexes.get(dep).unwrap()).unwrap();
-                if match dep_service.get_final_state().await {
-                    ServiceState::Reset | ServiceState::Down => true,
-                    _ => false,
-                } {
+                if matches!(
+                    dep_service.get_final_state().await,
+                    ServiceState::Reset | ServiceState::Down
+                ) {
                     // Awaiting here is safe, as starting services always mean spawning ks-run-*
                     self.start_service(dep_service.clone()).await
                 } else {
@@ -175,7 +175,7 @@ impl LiveServiceGraph {
             let service_path = runtime_service_dir.join("service");
             let mut file = File::create(service_path).await.unwrap();
             let buf = ser_res.unwrap();
-            file.write(&buf).await.unwrap();
+            file.write_all(&buf).await.unwrap();
             // TODO: Add logging and remove unwrap
             let child = Command::new("rsvc")
                 .args(vec![
@@ -251,7 +251,7 @@ impl LiveServiceGraph {
                 let service_path = runtime_service_dir.join("service");
                 let mut file = File::create(service_path).await.unwrap();
                 let buf = serde_json::to_vec(&oneshot).unwrap();
-                file.write(&buf).await.unwrap();
+                file.write_all(&buf).await.unwrap();
                 // TODO: Add logging and remove unwrap
                 Command::new("ks-run-oneshot")
                     .args(vec![runtime_service_dir.as_os_str(), OsStr::new("stop")])

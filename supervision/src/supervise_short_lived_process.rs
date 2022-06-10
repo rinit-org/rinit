@@ -24,7 +24,7 @@ pub async fn supervise_short_lived_process(
         if start {
             &oneshot.start
         } else {
-            &oneshot.stop.as_ref().unwrap()
+            oneshot.stop.as_ref().unwrap()
         },
         signal_wait_fun(),
     )

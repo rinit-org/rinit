@@ -51,7 +51,7 @@ impl MessageHandler {
                         .await
                 } else {
                     stream::iter(&services)
-                        .then(async move |service| self.graph.get_service(&service).await)
+                        .then(async move |service| self.graph.get_service(service).await)
                         .collect()
                         .await
                 };
@@ -82,21 +82,22 @@ impl MessageHandler {
                 let mut err = String::new();
                 let futures = services
                     .iter()
-                    .filter_map(|service| {
-                        if !self.graph.indexes.contains_key(service) {
+                    .filter(|service| {
+                        if !self.graph.indexes.contains_key(service.as_str()) {
                             err.push_str(&format!("{service} not found\n"));
-                            Some(service)
+                            true
                         } else {
-                            None
+                            false
                         }
                     })
                     .map(async move |service| {
                         self.graph
                             .start_service(self.graph.get_service(service).await)
+                            .await
                     })
                     .collect::<Vec<_>>();
                 for f in futures {
-                    if let Err(e) = f.await.await {
+                    if let Err(e) = f.await {
                         err.push_str(&format!("{e:#?}\n"));
                     }
                 }
@@ -120,21 +121,22 @@ impl MessageHandler {
                 let mut err = String::new();
                 let futures = services
                     .iter()
-                    .filter_map(|service| {
-                        if self.graph.indexes.contains_key(service) {
+                    .filter(|service| {
+                        if self.graph.indexes.contains_key(service.as_str()) {
                             err.push_str(&format!("{service} not found\n"));
-                            Some(service)
+                            true
                         } else {
-                            None
+                            false
                         }
                     })
                     .map(async move |service| {
                         self.graph
                             .stop_service(self.graph.get_service(service).await)
+                            .await
                     })
                     .collect::<Vec<_>>();
                 for f in futures {
-                    if let Err(e) = f.await.await {
+                    if let Err(e) = f.await {
                         err.push_str(&format!("{e:#?}\n"));
                     }
                 }

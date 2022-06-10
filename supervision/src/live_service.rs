@@ -46,10 +46,7 @@ impl LiveService {
     /// Wait until we have one of the 3 final states
     pub async fn get_final_state(&self) -> ServiceState {
         let mut state = self.state.lock().await;
-        if match *state {
-            ServiceState::Starting | ServiceState::Stopping => true,
-            _ => false,
-        } {
+        if matches!(*state, ServiceState::Starting | ServiceState::Stopping) {
             let service_timeout = Duration::from_millis(match &self.node.service {
                 Service::Bundle(_) => unreachable!(),
                 Service::Longrun(longrun) => {
@@ -67,17 +64,18 @@ impl LiveService {
                 Service::Oneshot(oneshot) => {
                     if *state == ServiceState::Starting {
                         oneshot.start.get_maximum_time()
+                    } else if let Some(stop) = &oneshot.stop {
+                        stop.get_maximum_time()
                     } else {
-                        if let Some(stop) = &oneshot.stop {
-                            stop.get_maximum_time()
-                        } else {
-                            0
-                        }
+                        0
                     }
                 }
                 Service::Virtual(_) => unreachable!(),
             } as u64);
-            if let Err(_) = timeout(service_timeout, self.wait.wait_no_relock(state)).await {
+            if timeout(service_timeout, self.wait.wait_no_relock(state))
+                .await
+                .is_err()
+            {
                 // the wait timed out
                 return ServiceState::Down;
             }
