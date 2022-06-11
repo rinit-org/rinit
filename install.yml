@@ -1,0 +1,7 @@
+rinstall: 0.2.0
+pkgs:
+  rinit:
+    type: rust
+    exe:
+      - rctl
+      - rsvc
