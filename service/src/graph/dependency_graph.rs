@@ -18,7 +18,7 @@ use crate::{
     types::Service,
 };
 
-#[derive(Debug, Snafu, PartialEq)]
+#[derive(Debug, Snafu, PartialEq, Eq)]
 pub enum DependencyGraphError {
     #[snafu(display("the dependency {} of service {} is missing", dependency, service))]
     DependenciesUnfulfilledError { service: String, dependency: String },

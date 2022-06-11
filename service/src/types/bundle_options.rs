@@ -4,7 +4,7 @@ use serde::{
 };
 
 /// Store options for Longrun and Oneshot
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct BundleOptions {
     pub contents: Vec<String>,
 }

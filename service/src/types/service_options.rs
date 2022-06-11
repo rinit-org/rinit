@@ -4,7 +4,7 @@ use serde::{
 };
 
 /// Store options for Longrun and Oneshot
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ServiceOptions {
     pub dependencies: Vec<String>,
     pub requires: Vec<String>,

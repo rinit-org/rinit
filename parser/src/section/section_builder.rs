@@ -16,7 +16,7 @@ use crate::{
     ArrayParser,
 };
 
-#[derive(Snafu, Debug, PartialEq)]
+#[derive(Snafu, Debug, PartialEq, Eq)]
 pub enum SectionBuilderError {
     #[snafu(display("encountered an error while parsing the field {}", field))]
     ArrayParserError {

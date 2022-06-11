@@ -5,7 +5,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ScriptConfig {
     contents: HashMap<String, String>,
 }

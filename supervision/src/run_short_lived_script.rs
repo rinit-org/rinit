@@ -23,7 +23,7 @@ use crate::{
     kill_process,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 enum ScriptResult {
     Exited(ExitStatus),
     SignalReceived,

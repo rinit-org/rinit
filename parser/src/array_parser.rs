@@ -3,7 +3,7 @@ use snafu::{
     Snafu,
 };
 
-#[derive(Debug, Snafu, PartialEq)]
+#[derive(Debug, Snafu, PartialEq, Eq)]
 pub enum ArrayParserError {
     #[snafu(display("values {:?} are duplicated", values))]
     DuplicatedValuesFound { values: Vec<String> },

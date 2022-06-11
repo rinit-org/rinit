@@ -3,7 +3,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum Provider {
     Empty,
     Single(String),

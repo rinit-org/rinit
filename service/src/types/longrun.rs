@@ -5,7 +5,7 @@ use serde::{
 
 use super::*;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Longrun {
     pub name: String,
     pub run: Script,

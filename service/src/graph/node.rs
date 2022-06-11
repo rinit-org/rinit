@@ -13,7 +13,7 @@ use crate::types::{
     Service,
 };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Node {
     pub service: Service,
     pub dependents: HashSet<usize>,

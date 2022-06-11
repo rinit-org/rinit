@@ -1,6 +1,6 @@
 use snafu::Snafu;
 
-#[derive(Snafu, Debug, PartialEq)]
+#[derive(Snafu, Debug, PartialEq, Eq)]
 pub enum CodeParserError {
     #[snafu(display("the key must be non-empty"))]
     EmptyKey,

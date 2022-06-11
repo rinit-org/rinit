@@ -9,7 +9,7 @@ use snafu::Snafu;
 
 use super::script_config::ScriptConfig;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum ScriptPrefix {
     Bash,
     Path,
@@ -39,7 +39,7 @@ impl TryFrom<String> for ScriptPrefix {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Script {
     pub prefix: ScriptPrefix,
     pub execute: String,
