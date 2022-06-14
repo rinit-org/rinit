@@ -1,5 +1,9 @@
 # rinit
 
+![GitHub branch checks state](https://img.shields.io/github/checks-status/rinit-org/rinit/main?logo=github)
+[![codecov](https://codecov.io/gh/rinit-org/rinit/branch/main/graph/badge.svg?token=owkoG8w2UG)](https://codecov.io/gh/rinit-org/rinit)
+![GitHub](https://img.shields.io/github/license/rinit-org/rinit?logo=github)
+
 **rinit** is a next generation init and service manager for Linux and written in Rust.
 It is inspired by [66](https://web.obarun.org/software/66),
 [s6](https://skarnet.org/software/s6/) suite and [deamontools](http://cr.yp.to/daemontools.html).
