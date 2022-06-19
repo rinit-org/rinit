@@ -1,9 +1,9 @@
 use std::{
+    self,
     collections::HashMap,
     ffi::OsStr,
     os::unix::prelude::AsRawFd,
     process::Stdio,
-    sync::Arc,
 };
 
 use anyhow::{
@@ -13,7 +13,9 @@ use anyhow::{
 };
 use async_pidfd::PidFd;
 use async_recursion::async_recursion;
+use async_scoped_local::TokioScope;
 use rinit_service::{
+    config::Config,
     graph::DependencyGraph,
     service_state::ServiceState,
     types::Service,
@@ -28,7 +30,6 @@ use tokio::{
         AsyncWriteExt,
     },
     process::Command,
-    sync::RwLock,
 };
 use tracing::{
     error,
@@ -38,78 +39,78 @@ use tracing::{
 use crate::{
     live_service::LiveService,
     pidfd_send_signal::pidfd_send_signal,
-    CONFIG,
 };
 
 pub struct LiveServiceGraph {
     pub indexes: HashMap<String, usize>,
-    pub live_services: RwLock<Vec<Arc<LiveService>>>,
+    pub live_services: Vec<LiveService>,
+    config: Config,
 }
 
 impl LiveServiceGraph {
-    pub fn new(graph: DependencyGraph) -> Result<Self> {
-        let nodes: Vec<_> = graph
-            .nodes
-            .into_iter()
-            .map(LiveService::new)
-            .map(Arc::new)
-            .collect();
+    pub fn new(config: Config) -> Result<Self> {
+        let graph: DependencyGraph =
+            serde_json::from_slice(&std::fs::read(config.get_graph_filename()).unwrap()).unwrap();
+        let nodes: Vec<_> = graph.nodes.into_iter().map(LiveService::new).collect();
         Ok(Self {
             indexes: nodes
                 .iter()
                 .enumerate()
                 .map(|(i, el)| (el.node.name().to_owned(), i))
                 .collect(),
-            live_services: RwLock::new(nodes),
+            live_services: nodes,
+            config,
         })
     }
 
-    pub async fn start_all_services(&'static self) {
-        let services = self.live_services.read().await;
-        let futures: Vec<_> = services
-            .iter()
-            .map(|live_service| {
-                let live_service = live_service.clone();
-                tokio::spawn(async move {
-                    if live_service.node.service.should_start() {
-                        // TODO: Generate an order of the services to start and use
-                        // start_service_impl
-                        let res = self.start_service(live_service.clone()).await;
-                        if let Err(err) = res {
-                            warn!("{err:?}");
+    pub async fn start_all_services(&self) {
+        // This is unsafe because the futures may outlive the current scope
+        // We wait on them afterwards and we know that self will outlive them
+        // so it's safe to use it
+        let (_res, futures) = unsafe {
+            TokioScope::scope_and_collect(|s| {
+                for live_service in &self.live_services {
+                    s.spawn(async move {
+                        if live_service.node.service.should_start() {
+                            // TODO: Generate an order of the services to start and use
+                            // start_service_impl
+                            let res = self.start_service(live_service).await;
+                            if let Err(err) = res {
+                                warn!("{err:?}");
+                            }
                         }
-                    }
-                })
+                    });
+                }
             })
-            .collect();
+        }
+        .await;
         for future in futures {
-            if let Err(err) = future.await {
+            if let Err(err) = future {
                 if err.is_panic() {
                     error!("{err:?}");
                 }
             }
         }
     }
-    #[async_recursion]
+
+    #[async_recursion(?Send)]
     pub async fn start_service(
         &self,
-        live_service: Arc<LiveService>,
+        live_service: &LiveService,
     ) -> Result<()> {
-        let mut state = live_service.state.clone().lock_owned().await;
-        if *state == ServiceState::Up {
+        let mut state = *live_service.state.borrow();
+        if state == ServiceState::Up {
             return Ok(());
         }
-        while *state == ServiceState::Stopping {
-            state = live_service
-                .wait
-                .wait((state, live_service.state.clone()))
-                .await;
+        while state == ServiceState::Stopping {
+            state = live_service.get_final_state().await;
         }
-        if *state != ServiceState::Starting {
-            *state = ServiceState::Starting;
-            drop(state);
+        // Check that the service is not already starting
+        // or is already up. Some other task could have done so while awaiting above
+        if state != ServiceState::Starting && state != ServiceState::Up {
+            live_service.state.replace(ServiceState::Starting);
             self.start_dependencies(&live_service).await?;
-            self.start_service_impl(live_service.clone()).await?;
+            self.start_service_impl(&live_service).await?;
         }
         let state = live_service.get_final_state().await;
         ensure!(
@@ -130,14 +131,16 @@ impl LiveServiceGraph {
             .dependencies()
             .iter()
             .map(async move |dep| -> Result<()> {
-                let services = self.live_services.read().await;
-                let dep_service = services.get(*self.indexes.get(dep).unwrap()).unwrap();
+                let dep_service = self
+                    .live_services
+                    .get(*self.indexes.get(dep).unwrap())
+                    .unwrap();
                 if matches!(
                     dep_service.get_final_state().await,
                     ServiceState::Reset | ServiceState::Down
                 ) {
                     // Awaiting here is safe, as starting services always mean spawning ks-run-*
-                    self.start_service(dep_service.clone()).await
+                    self.start_service(&dep_service).await
                 } else {
                     Ok(())
                 }
@@ -152,9 +155,9 @@ impl LiveServiceGraph {
 
     async fn start_service_impl(
         &self,
-        live_service: Arc<LiveService>,
+        live_service: &LiveService,
     ) -> Result<()> {
-        self.wait_on_deps_starting(live_service.clone())
+        self.wait_on_deps_starting(live_service)
             .await
             .with_context(|| format!("while starting service {}", live_service.node.name()))?;
         let res = match &live_service.node.service {
@@ -164,9 +167,8 @@ impl LiveServiceGraph {
             Service::Virtual(_) => None,
         };
         if let Some((supervise, ser_res)) = res {
-            let config = CONFIG.read().await;
-            let runtime_service_dir = config
-                .as_ref()
+            let runtime_service_dir = self
+                .config
                 .rundir
                 .as_ref()
                 .unwrap()
@@ -188,11 +190,10 @@ impl LiveServiceGraph {
                 .spawn()
                 .unwrap();
 
-            let mut status = live_service.status.lock().await;
-            status.pidfd = Some(AsyncFd::new(
+            live_service.pidfd.replace(Some(AsyncFd::new(
                 PidFd::from_pid(child.id().unwrap() as i32)
                     .context("unable to create PidFd from child pid")?,
-            )?);
+            )?));
         }
 
         Ok(())
@@ -200,7 +201,7 @@ impl LiveServiceGraph {
 
     async fn wait_on_deps_starting(
         &self,
-        live_service: Arc<LiveService>,
+        live_service: &LiveService,
     ) -> Result<()> {
         let futures: Vec<_> = live_service
             .node
@@ -208,7 +209,7 @@ impl LiveServiceGraph {
             .dependencies()
             .iter()
             .map(async move |dep| -> (&str, ServiceState) {
-                let dep_service = self.get_service(dep).await;
+                let dep_service = self.get_service(dep);
                 (dep, dep_service.get_final_state().await)
             })
             .collect();
@@ -224,25 +225,23 @@ impl LiveServiceGraph {
         Ok(())
     }
 
-    #[async_recursion]
     pub async fn stop_service(
         &self,
-        live_service: Arc<LiveService>,
+        live_service: &LiveService,
     ) -> Result<()> {
-        self.stop_service_impl(live_service).await?;
+        self.stop_service_impl(&live_service).await?;
         Ok(())
     }
 
     async fn stop_service_impl(
         &self,
-        live_service: Arc<LiveService>,
+        live_service: &LiveService,
     ) -> Result<()> {
-        self.wait_on_deps_stopping(&live_service);
+        self.wait_on_deps_stopping(&live_service).await?;
         match &live_service.node.service {
             Service::Oneshot(oneshot) => {
-                let config = CONFIG.read().await;
-                let runtime_service_dir = config
-                    .as_ref()
+                let runtime_service_dir = self
+                    .config
                     .rundir
                     .as_ref()
                     .unwrap()
@@ -261,7 +260,7 @@ impl LiveServiceGraph {
                     .unwrap();
             }
             Service::Longrun(_) => {
-                if let Some(pidfd) = &live_service.status.lock().await.pidfd {
+                if let Some(pidfd) = &*live_service.pidfd.borrow() {
                     // TODO: Add timeout
                     pidfd_send_signal(pidfd.as_raw_fd(), 9)
                         .with_context(|| format!("unable to send signal {:?}", 15))?;
@@ -276,47 +275,58 @@ impl LiveServiceGraph {
         Ok(())
     }
 
-    pub async fn stop_all_services(&'static self) {
-        let services = self.live_services.read().await;
-        let futures: Vec<_> = services
-            .iter()
-            .map(|live_service| {
-                let live_service = live_service.clone();
-                tokio::spawn(async move {
-                    if live_service.get_final_state().await == ServiceState::Up {
-                        // TODO: Log
-                        self.stop_service(live_service.clone()).await;
-                    }
-                })
+    pub async fn stop_all_services(&self) {
+        // This is unsafe because the futures may outlive the current scope
+        // We wait on them afterwards and we know that self will outlive them
+        // so it's safe to use it
+        let (_res, futures) = unsafe {
+            TokioScope::scope_and_collect(|s| {
+                for live_service in &self.live_services {
+                    s.spawn(async move {
+                        if live_service.get_final_state().await == ServiceState::Up {
+                            // TODO: Log
+                            self.stop_service(live_service).await.unwrap();
+                        }
+                    });
+                }
             })
-            .collect();
+        }
+        .await;
         for future in futures {
-            future.await.unwrap();
+            future.unwrap();
         }
     }
 
-    pub async fn get_service(
+    pub fn get_service(
         &self,
         name: &str,
-    ) -> Arc<LiveService> {
+    ) -> &LiveService {
         self.live_services
-            .read()
-            .await
             .get(*self.indexes.get(name).expect("This should never happen"))
             .unwrap()
             .clone()
+    }
+
+    pub fn get_mut_service(
+        &mut self,
+        name: &str,
+    ) -> &mut LiveService {
+        self.live_services
+            .get_mut(*self.indexes.get(name).expect("This should never happen"))
+            .unwrap()
     }
 
     async fn wait_on_deps_stopping(
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
-        let services = self.live_services.read().await;
         let futures: Vec<_> = live_service
             .node
             .dependents
             .iter()
-            .map(|dependant| -> Arc<LiveService> { services.get(*dependant).unwrap().to_owned() })
+            .map(|dependant| -> &LiveService {
+                self.live_services.get(*dependant).unwrap().to_owned()
+            })
             .map(async move |dependant| -> ServiceState { dependant.get_final_state().await })
             .collect();
 

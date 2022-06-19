@@ -22,7 +22,7 @@ use xdg::BaseDirectories;
 static DEFAULT_PATH: &str = "/sbin:/bin:/usr/sbin:/usr/bin";
 static DEFAULT_CONFIG_PLACEHOLDER: &str = "%%default_config%%";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     pub path: Option<PathBuf>,
     pub configdir: Option<PathBuf>,

@@ -1,5 +1,4 @@
 #![feature(async_closure)]
-#![feature(new_uninit)]
 
 pub mod exec_script;
 pub mod kill_process;
@@ -17,13 +16,6 @@ pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
-use tokio::{
-    fs,
-    net::UnixListener,
-    select,
-    sync::RwLock,
-};
-
 pub mod live_service;
 pub mod live_service_graph;
 pub mod message_handler;
@@ -34,7 +26,7 @@ use std::{
         Path,
         PathBuf,
     },
-    sync::Arc,
+    rc::Rc,
 };
 
 use anyhow::{
@@ -48,21 +40,18 @@ use clap::{
 use live_service_graph::LiveServiceGraph;
 use message_handler::MessageHandler;
 use rinit_service::config::Config;
+use tokio::{
+    fs,
+    net::UnixListener,
+    select,
+    task::{
+        self,
+        JoinError,
+    },
+};
 
 #[macro_use]
 extern crate lazy_static;
-
-lazy_static! {
-    pub static ref CONFIG: RwLock<Arc<Config>> =
-        RwLock::new(unsafe { Arc::new_zeroed().assume_init() });
-    pub static ref LIVE_GRAPH: LiveServiceGraph = LiveServiceGraph::new(
-        serde_json::from_slice(
-            &std::fs::read(&*CONFIG.try_read().unwrap().get_graph_filename()).unwrap()
-        )
-        .unwrap()
-    )
-    .unwrap();
-}
 
 #[derive(Parser)]
 struct Opts {
@@ -72,7 +61,7 @@ struct Opts {
 
 #[derive(Subcommand)]
 enum Subcmd {
-    Run,
+    Run { config_path: Option<String> },
     Oneshot { phase: String, path: PathBuf },
     Longrun { phase: String, path: PathBuf },
 }
@@ -87,26 +76,43 @@ fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
 
 pub async fn service_control(config: Config) -> Result<()> {
     install_tracing();
-    let config = Arc::new(config);
 
-    *CONFIG.write().await = config;
-
-    tokio::spawn(async move {
-        LIVE_GRAPH.start_all_services().await;
-    });
-
+    let local = task::LocalSet::new();
     // Setup socket listener
     fs::create_dir_all(Path::new(rinit_ipc::get_host_address()).parent().unwrap())
         .await
         .unwrap();
-    let listener = UnixListener::bind(rinit_ipc::get_host_address()).unwrap();
+    let live_graph = LiveServiceGraph::new(config).unwrap();
 
-    select! {
-        _ = listen(listener) => {}
-        _ = signal_wait() => {
-            LIVE_GRAPH.stop_all_services().await;
-        }
-    }
+    local
+        .run_until(async move {
+            let listener = UnixListener::bind(rinit_ipc::get_host_address()).unwrap();
+            let handler = Rc::new(MessageHandler::new(live_graph));
+            let mut handles = Vec::new();
+            loop {
+                select! {
+                    // put signal_wait first because we want to stop as soon as
+                    // we receive a termination signal
+                    // this is cancel safe
+                    _ = signal_wait() => {
+                        for handle in handles {
+                            let res: Result<(), JoinError> = handle.await;
+                            res.unwrap();
+                        }
+                        break;
+                    }
+                    // this is cancel safe
+                    conn = listener.accept() => {
+                        let (stream, _addr) = conn.unwrap();
+                        let handler = handler.clone();
+                        handles.push(task::spawn_local(async move {
+                            handler.handle_stream(stream).await;
+                        }));
+                    }
+                }
+            }
+        })
+        .await;
 
     fs::remove_file(get_host_address()).await.unwrap();
 
@@ -133,23 +139,12 @@ fn install_tracing() {
         .init();
 }
 
-async fn listen(listener: UnixListener) -> ! {
-    loop {
-        let conn = listener.accept().await.unwrap();
-        let (stream, _addr) = conn;
-        tokio::spawn(async {
-            let handler = MessageHandler::new(&LIVE_GRAPH);
-            handler.handle(stream).await;
-        });
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
     match opts.subcmd {
-        Subcmd::Run => {
-            service_control(Config::new(None).unwrap())
+        Subcmd::Run { config_path } => {
+            service_control(Config::new(config_path).unwrap())
                 .await
                 .context("")?
         }

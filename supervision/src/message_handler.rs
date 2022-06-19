@@ -1,7 +1,4 @@
-use std::{
-    io,
-    sync::Arc,
-};
+use std::io;
 
 use futures::{
     prelude::*,
@@ -21,62 +18,61 @@ use crate::{
 };
 
 pub struct MessageHandler {
-    pub graph: &'static LiveServiceGraph,
+    graph: LiveServiceGraph,
 }
 
 impl MessageHandler {
-    pub async fn handle(
-        &self,
+    pub fn new(graph: LiveServiceGraph) -> Self {
+        Self { graph }
+    }
+
+    pub async fn handle_stream<'a>(
+        &'a self,
         stream: UnixStream,
     ) {
         let buf = Self::read(&stream).await;
         let message: Message = serde_json::from_slice(&buf).unwrap();
-        trace!("Received message {message:?}");
+        trace!("Received message from socket: {message:?}");
+        let reply = self.handle(message).await;
+        self.write_stream(stream, reply).await;
+    }
+
+    pub async fn handle<'a>(
+        &self,
+        message: Message,
+    ) -> Reply {
         match message {
             Message::ServiceIsUp(up, name) => {
-                let live_service = self.graph.get_service(&name).await;
-                let mut state = live_service.state.lock().await;
-                *state = if up {
-                    ServiceState::Up
-                } else {
-                    ServiceState::Down
-                };
-                live_service.wait.notify_all();
+                let live_service = self.graph.get_service(&name);
+                live_service.update_state(
+                    if up {
+                        ServiceState::Up
+                    } else {
+                        ServiceState::Down
+                    },
+                );
+                live_service.tx.send(()).unwrap();
+                Reply::Empty
             }
             Message::ServicesStatus(services) => {
-                let services: Vec<Arc<LiveService>> = if services.is_empty() {
-                    stream::iter(self.graph.live_services.read().await.iter())
-                        .then(async move |live_service| live_service.clone())
-                        .collect()
-                        .await
+                let services: Vec<&LiveService> = if services.is_empty() {
+                    self.graph.live_services.iter().collect()
                 } else {
-                    stream::iter(&services)
-                        .then(async move |service| self.graph.get_service(service).await)
+                    services
+                        .iter()
+                        .map(|service| self.graph.get_service(service))
                         .collect()
-                        .await
                 };
                 let states = stream::iter(services)
                     .then(async move |live_service| {
-                        let state = live_service.state.lock().await;
-                        (live_service.node.name().to_owned(), state.to_owned())
+                        (
+                            live_service.node.name().to_owned(),
+                            *live_service.state.borrow(),
+                        )
                     })
                     .collect::<Vec<_>>()
                     .await;
-                let reply = Reply::ServicesStates(states);
-                match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
-                match stream.try_write("\n".as_bytes()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
+                Reply::ServicesStates(states)
             }
             Message::StartServices(services) => {
                 let mut err = String::new();
@@ -92,7 +88,7 @@ impl MessageHandler {
                     })
                     .map(async move |service| {
                         self.graph
-                            .start_service(self.graph.get_service(service).await)
+                            .start_service(self.graph.get_service(service))
                             .await
                     })
                     .collect::<Vec<_>>();
@@ -101,21 +97,7 @@ impl MessageHandler {
                         err.push_str(&format!("{e:#?}\n"));
                     }
                 }
-                let reply = Reply::Result(if !err.is_empty() { Some(err) } else { None });
-                match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
-                match stream.try_write("\n".as_bytes()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
+                Reply::Result(if !err.is_empty() { Some(err) } else { None })
             }
             Message::StopServices(services) => {
                 let mut err = String::new();
@@ -131,7 +113,7 @@ impl MessageHandler {
                     })
                     .map(async move |service| {
                         self.graph
-                            .stop_service(self.graph.get_service(service).await)
+                            .stop_service(self.graph.get_service(service))
                             .await
                     })
                     .collect::<Vec<_>>();
@@ -140,21 +122,15 @@ impl MessageHandler {
                         err.push_str(&format!("{e:#?}\n"));
                     }
                 }
-                let reply = Reply::Result(if !err.is_empty() { Some(err) } else { None });
-                match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
-                match stream.try_write("\n".as_bytes()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        todo!()
-                    }
-                }
+                Reply::Result(if !err.is_empty() { Some(err) } else { None })
+            }
+            Message::StartAllServices => {
+                self.graph.start_all_services().await;
+                Reply::Empty
+            }
+            Message::StopAllServices => {
+                self.graph.stop_all_services().await;
+                Reply::Empty
             }
         }
     }
@@ -184,7 +160,24 @@ impl MessageHandler {
         res
     }
 
-    pub fn new(graph: &'static LiveServiceGraph) -> Self {
-        Self { graph }
+    pub async fn write_stream(
+        &self,
+        stream: UnixStream,
+        reply: Reply,
+    ) {
+        match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(_) => {
+                todo!()
+            }
+        }
+        match stream.try_write("\n".as_bytes()) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(_) => {
+                todo!()
+            }
+        }
     }
 }

@@ -21,6 +21,8 @@ pub enum Message {
     ServicesStatus(Vec<String>),
     StartServices(Vec<String>),
     StopServices(Vec<String>),
+    StartAllServices,
+    StopAllServices,
 }
 
 #[derive(Debug, Snafu)]

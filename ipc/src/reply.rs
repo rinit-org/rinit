@@ -8,4 +8,5 @@ use serde::{
 pub enum Reply {
     ServicesStates(Vec<(String, ServiceState)>),
     Result(Option<String>),
+    Empty,
 }

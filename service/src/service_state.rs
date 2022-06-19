@@ -5,7 +5,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ServiceState {
     Reset,
     Up,
