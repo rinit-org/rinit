@@ -80,7 +80,7 @@ impl Config {
         }
     }
 
-    pub fn new(opts_configdir: Option<String>) -> Result<Self> {
+    pub fn new(opts_config: Option<PathBuf>) -> Result<Self> {
         let uid = unsafe { libc::getuid() };
         let xdg: BaseDirectories =
             BaseDirectories::with_prefix("rinit").context(BaseDirectoriesSnafu {})?;
@@ -92,43 +92,47 @@ impl Config {
         };
 
         // Merge the config read from the default locations
-        let configdir = if let Some(configdir) = &opts_configdir {
-            configdir.to_owned()
-        } else if uid == 0 {
-            "/etc/rinit".to_string()
+        let system_config_path = if uid == 0 {
+            Path::new("/etc/rinit").to_path_buf()
         } else {
             xdg.get_config_home()
-                .to_str()
-                .ok_or(ConfigError::StringConversionError {
-                    path: xdg.get_config_home(),
-                })?
-                .to_string()
-        };
-        let configdir = Path::new(&configdir);
-        ensure!(
-            opts_configdir.is_none() || configdir.exists(),
-            ConfigDirNotFoundSnafu { configdir }
-        );
-        let config_path = configdir.join("rinit.conf");
-        ensure!(
-            opts_configdir.is_none() || config_path.exists(),
-            ConfigFileNotFoundSnafu {
-                config_file: config_path
-            }
-        );
-        if config_path.exists() {
-            let config_from_file =
-                toml::from_str(&fs::read_to_string(&config_path).with_context(|_| {
+        }
+        .join("rinit.conf");
+
+        if system_config_path.exists() {
+            let system_config =
+                toml::from_str(&fs::read_to_string(&system_config_path).with_context(|_| {
                     ConfigReadSnafu {
-                        config_path: config_path.clone(),
+                        config_path: system_config_path.clone(),
                     }
                 })?)
                 .with_context(|_| {
                     ConfigFormatSnafu {
-                        config_path: config_path.clone(),
+                        config_path: system_config_path,
                     }
                 })?;
-            config.merge(config_from_file);
+            config.merge(system_config);
+        }
+
+        if let Some(opts_config_file) = &opts_config {
+            ensure!(
+                opts_config_file.exists(),
+                ConfigFileNotFoundSnafu {
+                    config_file: opts_config_file
+                }
+            );
+            let opts_config =
+                toml::from_str(&fs::read_to_string(&opts_config_file).with_context(|_| {
+                    ConfigReadSnafu {
+                        config_path: opts_config_file,
+                    }
+                })?)
+                .with_context(|_| {
+                    ConfigFormatSnafu {
+                        config_path: opts_config_file,
+                    }
+                })?;
+            config.merge(opts_config);
         }
 
         // replace configdir placeholder with actual config dir

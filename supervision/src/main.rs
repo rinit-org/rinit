@@ -61,7 +61,7 @@ struct Opts {
 
 #[derive(Subcommand)]
 enum Subcmd {
-    Run { config_path: Option<String> },
+    Run { config_path: Option<PathBuf> },
     Oneshot { phase: String, path: PathBuf },
     Longrun { phase: String, path: PathBuf },
 }
