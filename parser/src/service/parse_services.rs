@@ -5,6 +5,7 @@ use std::path::{
 
 use rinit_service::types::Service;
 use snafu::{
+    ensure,
     ResultExt,
     Snafu,
 };
@@ -20,6 +21,11 @@ pub enum ServicesParserError {
     ParsingServiceError { source: ParseServiceError },
     #[snafu(display("could not find service file for {:?}", service))]
     CouldNotFindService { service: String },
+    #[snafu(display(
+        "the service name is different than the file name for {:?}",
+        service_file
+    ))]
+    NameNotMatchingFile { service_file: PathBuf },
 }
 
 unsafe impl Send for ServicesParserError {}
@@ -36,27 +42,33 @@ pub fn parse_services(
         .into_iter()
         .map(|service| {
             // If we don't find the services passed as args on the system, return an error
-            if let Some(val) = get_service_file(&service, service_dirs, system) {
-                Ok(val)
+            if let Some(file) = get_service_file(&service, service_dirs, system) {
+                Ok((service, file))
             } else {
                 Err(ServicesParserError::CouldNotFindService { service })
             }
         })
-        .collect::<Result<Vec<PathBuf>, ServicesParserError>>()?;
+        .collect::<Result<Vec<(String, PathBuf)>, ServicesParserError>>()?;
 
-    while let Some(service) = to_parse.pop() {
-        let service = parse_service(&service).context(ParsingServiceSnafu {})?;
+    while let Some((name, file)) = to_parse.pop() {
+        let service = parse_service(&file).context(ParsingServiceSnafu {})?;
+        ensure!(
+            service.name() == name,
+            NameNotMatchingFileSnafu { service_file: file }
+        );
         let mut dependencies: Vec<String> = service.dependencies().into();
 
         results.push(service);
 
         // Skip services that we can't found, the dependency graph will
         // handle the error
-        to_parse.extend(
-            dependencies
-                .iter()
-                .filter_map(|service| get_service_file(service, service_dirs, system)),
-        );
+        to_parse.extend(dependencies.iter().filter_map(|service| {
+            if let Some(file) = get_service_file(service, service_dirs, system) {
+                Some((service.clone(), file))
+            } else {
+                None
+            }
+        }));
 
         services_already_parsed.append(&mut dependencies);
     }
