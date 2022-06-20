@@ -15,6 +15,8 @@ use crate::Config;
 pub struct EnableCommand {
     #[clap(required = true)]
     services: Vec<String>,
+    #[clap(long = "atomic-changes")]
+    pub atomic_changes: bool,
 }
 
 impl EnableCommand {
@@ -37,15 +39,39 @@ impl EnableCommand {
         } else {
             DependencyGraph::new()
         };
-        let services = parse_services(
-            self.services.clone(),
-            &config.service_directories,
-            config.system,
-        )
-        .context("unable to parse services")?;
-        graph
-            .add_services(self.services, services)
-            .context("unable to add the parsed services to the dependency graph")?;
+        if self.atomic_changes {
+            let services = parse_services(
+                self.services.clone(),
+                &config.service_directories,
+                config.system,
+            )
+            .context("unable to parse services")?;
+            graph
+                .add_services(self.services, services)
+                .context("unable to add the parsed services to the dependency graph")?;
+
+            println!("All the services have been enabled.");
+        } else {
+            for service in self.services {
+                let services = parse_services(
+                    vec![service.clone()],
+                    &config.service_directories,
+                    config.system,
+                )
+                .with_context(|| {
+                    format!("unable to parse service {service} and its dependencies")
+                })?;
+                graph
+                    .add_services(vec![service.clone()], services)
+                    .with_context(|| {
+                        format!(
+                            "unable to add service {service} and its dependencies to the \
+                             dependency graph"
+                        )
+                    })?;
+                println!("Service {service} has been enabled");
+            }
+        }
 
         fs::create_dir_all(graph_file.parent().unwrap()).with_context(|| {
             format!("unable to create parent directory of file {:?}", graph_file)
