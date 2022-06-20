@@ -93,8 +93,31 @@ pub async fn service_control(config: Config) -> Result<()> {
 
     local
         .run_until(async move {
-            let listener = UnixListener::bind(rinit_ipc::get_host_address()).unwrap();
+            info!("Starting rinit!");
+            let listener = Rc::new(UnixListener::bind(rinit_ipc::get_host_address()).unwrap());
             let handler = Rc::new(MessageHandler::new(live_graph));
+
+            let listener_clone = listener.clone();
+            let handler_clone = handler.clone();
+            task::spawn_local(async move {
+                join!(
+                    async move {
+                        let (stream, _addr) = listener_clone.accept().await.unwrap();
+                        handler_clone.handle_stream(stream).await;
+                    },
+                    async move {
+                        let mut stream = UnixStream::connect(rinit_ipc::get_host_address())
+                            .await
+                            .unwrap();
+                        stream
+                            .write_all(&serde_json::to_vec(&Message::StartAllServices).unwrap())
+                            .await
+                            .unwrap();
+                        stream.write("\n".as_bytes()).await.unwrap();
+                    },
+                )
+            });
+
             let mut handles = Vec::new();
             loop {
                 select! {
