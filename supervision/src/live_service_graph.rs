@@ -36,7 +36,6 @@ use crate::{
 pub struct LiveServiceGraph {
     pub indexes: HashMap<String, usize>,
     pub live_services: Vec<LiveService>,
-    config: Config,
 }
 
 impl LiveServiceGraph {
@@ -51,7 +50,6 @@ impl LiveServiceGraph {
                 .map(|(i, el)| (el.node.name().to_owned(), i))
                 .collect(),
             live_services: nodes,
-            config,
         })
     }
 
