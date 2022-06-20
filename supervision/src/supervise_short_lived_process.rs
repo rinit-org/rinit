@@ -1,9 +1,6 @@
-use std::path::Path;
-
 use anyhow::Result;
 use rinit_ipc::Message;
 use rinit_service::types::Oneshot;
-use tokio::fs;
 
 use crate::{
     run_short_lived_script,
@@ -11,26 +8,27 @@ use crate::{
 };
 
 pub async fn supervise_short_lived_process(
-    path: &Path,
     phase: &str,
+    service: &str,
 ) -> Result<()> {
     let start = match phase {
         "start" => true,
         "stop" => false,
         _ => todo!(),
     };
-    let oneshot: Oneshot = serde_json::from_slice(&fs::read(path).await?)?;
-    let success = run_short_lived_script(
+    let oneshot: Oneshot = serde_json::from_str(service)?;
+    let message = Message::ServiceIsUp(
         if start {
-            &oneshot.start
+            run_short_lived_script(&oneshot.start, signal_wait_fun()).await?
         } else {
-            oneshot.stop.as_ref().unwrap()
+            if let Some(stop_script) = oneshot.stop {
+                run_short_lived_script(&stop_script, signal_wait_fun()).await?;
+            }
+            false
         },
-        signal_wait_fun(),
-    )
-    .await?;
+        oneshot.name,
+    );
 
-    let message = Message::ServiceIsUp(if start { success } else { false }, oneshot.name);
     // TODO: log this
     message.send().unwrap();
 

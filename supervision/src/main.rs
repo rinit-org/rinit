@@ -1,4 +1,5 @@
 #![feature(async_closure)]
+#![feature(let_chains)]
 
 pub mod exec_script;
 pub mod kill_process;
@@ -11,11 +12,12 @@ pub mod supervise_short_lived_process;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
 pub use pidfd_send_signal::pidfd_send_signal;
-use rinit_ipc::get_host_address;
+use rinit_ipc::Message;
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
+use tracing::info;
 pub mod live_service;
 pub mod live_service_graph;
 pub mod message_handler;
@@ -42,7 +44,12 @@ use message_handler::MessageHandler;
 use rinit_service::config::Config;
 use tokio::{
     fs,
-    net::UnixListener,
+    io::AsyncWriteExt,
+    join,
+    net::{
+        UnixListener,
+        UnixStream,
+    },
     select,
     task::{
         self,
@@ -62,8 +69,8 @@ struct Opts {
 #[derive(Subcommand)]
 enum Subcmd {
     Run { config_path: Option<PathBuf> },
-    Oneshot { phase: String, path: PathBuf },
-    Longrun { phase: String, path: PathBuf },
+    Oneshot { phase: String, service: String },
+    Longrun { service: String },
 }
 
 fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
@@ -148,14 +155,12 @@ async fn main() -> Result<()> {
                 .await
                 .context("")?
         }
-        Subcmd::Oneshot { path, phase } => {
-            supervise_short_lived_process(&path, &phase)
+        Subcmd::Oneshot { phase, service } => {
+            supervise_short_lived_process(&phase, &service)
                 .await
                 .context("")?
         }
-        Subcmd::Longrun { path, phase: _ } => {
-            supervise_long_lived_process(&path).await.context("")?
-        }
+        Subcmd::Longrun { service } => supervise_long_lived_process(&service).await.context("")?,
     }
 
     Ok(())

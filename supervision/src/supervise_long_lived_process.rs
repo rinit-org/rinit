@@ -1,6 +1,5 @@
 use std::{
     future::Future,
-    path::Path,
     pin::Pin,
     process::ExitStatus,
     time::Duration,
@@ -17,7 +16,6 @@ use rinit_service::types::{
     Script,
 };
 use tokio::{
-    fs,
     io::unix::AsyncFd,
     select,
     task::JoinError,
@@ -84,8 +82,8 @@ where
     })
 }
 
-pub async fn supervise_long_lived_process(path: &Path) -> Result<()> {
-    let longrun: Longrun = serde_json::from_slice(&fs::read(path.join("service")).await?)?;
+pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
+    let longrun: Longrun = serde_json::from_str(service)?;
     let mut time_tried = 0;
     loop {
         let script_res = start_process(&longrun.run, signal_wait_fun()).await?;

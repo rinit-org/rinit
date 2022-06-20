@@ -1,7 +1,6 @@
 use std::{
     self,
     collections::HashMap,
-    ffi::OsStr,
     os::unix::prelude::AsRawFd,
     process::Stdio,
 };
@@ -21,14 +20,7 @@ use rinit_service::{
     types::Service,
 };
 use tokio::{
-    fs::{
-        self,
-        File,
-    },
-    io::{
-        unix::AsyncFd,
-        AsyncWriteExt,
-    },
+    io::unix::AsyncFd,
     process::Command,
 };
 use tracing::{
@@ -161,30 +153,15 @@ impl LiveServiceGraph {
             .await
             .with_context(|| format!("while starting service {}", live_service.node.name()))?;
         let res = match &live_service.node.service {
-            Service::Oneshot(oneshot) => Some(("oneshot", serde_json::to_vec(&oneshot))),
-            Service::Longrun(longrun) => Some(("longrun", serde_json::to_vec(&longrun))),
+            Service::Oneshot(oneshot) => Some(("oneshot", serde_json::to_string(&oneshot))),
+            Service::Longrun(longrun) => Some(("longrun", serde_json::to_string(&longrun))),
             Service::Bundle(_) => None,
             Service::Virtual(_) => None,
         };
-        if let Some((supervise, ser_res)) = res {
-            let runtime_service_dir = self
-                .config
-                .rundir
-                .as_ref()
-                .unwrap()
-                .join(&live_service.node.name());
-            fs::create_dir_all(&runtime_service_dir).await.unwrap();
-            let service_path = runtime_service_dir.join("service");
-            let mut file = File::create(service_path).await.unwrap();
-            let buf = ser_res.unwrap();
-            file.write_all(&buf).await.unwrap();
+        if let Some((supervise, ser_res)) = res && let Ok(json) = &ser_res {
             // TODO: Add logging and remove unwrap
             let child = Command::new("rsvc")
-                .args(vec![
-                    supervise,
-                    "start",
-                    runtime_service_dir.to_str().unwrap(),
-                ])
+                .args(vec![supervise, "start", &json])
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())
                 .spawn()
@@ -240,20 +217,13 @@ impl LiveServiceGraph {
         self.wait_on_deps_stopping(&live_service).await?;
         match &live_service.node.service {
             Service::Oneshot(oneshot) => {
-                let runtime_service_dir = self
-                    .config
-                    .rundir
-                    .as_ref()
-                    .unwrap()
-                    .join(&live_service.node.name());
-                fs::create_dir_all(&runtime_service_dir).await.unwrap();
-                let service_path = runtime_service_dir.join("service");
-                let mut file = File::create(service_path).await.unwrap();
-                let buf = serde_json::to_vec(&oneshot).unwrap();
-                file.write_all(&buf).await.unwrap();
                 // TODO: Add logging and remove unwrap
-                Command::new("ks-run-oneshot")
-                    .args(vec![runtime_service_dir.as_os_str(), OsStr::new("stop")])
+                Command::new("rsvc")
+                    .args(vec![
+                        "oneshot",
+                        "stop",
+                        &serde_json::to_string(&oneshot).unwrap(),
+                    ])
                     .stdin(Stdio::null())
                     .stdout(Stdio::inherit())
                     .spawn()
