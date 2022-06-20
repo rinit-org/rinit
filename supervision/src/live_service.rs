@@ -13,6 +13,7 @@ use tokio::{
     io::unix::AsyncFd,
     sync::broadcast::{
         self,
+        Receiver,
         Sender,
     },
     time::timeout,
@@ -23,6 +24,8 @@ use tokio::{
 pub struct LiveService {
     pub node: Node,
     pub tx: Sender<()>,
+    // Keep a receiving end open so that the sender can always send data
+    _rx: Receiver<()>,
     pub state: RefCell<ServiceState>,
     pub pidfd: RefCell<Option<AsyncFd<PidFd>>>,
     pub remove: bool,
@@ -31,7 +34,7 @@ pub struct LiveService {
 
 impl LiveService {
     pub fn new(node: Node) -> Self {
-        let (tx, _) = broadcast::channel(1);
+        let (tx, rx) = broadcast::channel(1);
         Self {
             node,
             state: RefCell::new(ServiceState::Reset),
@@ -39,6 +42,7 @@ impl LiveService {
             remove: false,
             new: None,
             tx,
+            _rx: rx,
         }
     }
 
