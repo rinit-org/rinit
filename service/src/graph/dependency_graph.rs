@@ -26,6 +26,8 @@ pub enum DependencyGraphError {
     CycleFoundError,
     #[snafu(display("service {} is not enabled", service))]
     ServiceNotEnabled { service: String },
+    #[snafu(display("service {service} is already enabled"))]
+    ServiceAlreadyEnabled { service: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,6 +67,16 @@ impl DependencyGraph {
         services_to_enable: Vec<String>,
         services: Vec<Service>,
     ) -> Result<()> {
+        services_to_enable.iter().try_for_each(|service| {
+            if let Some(index) = &self.nodes_index.get(service) {
+                ensure!(
+                    !self.enabled_services.contains(&index),
+                    ServiceAlreadyEnabledSnafu { service }
+                );
+            }
+            Ok(())
+        })?;
+
         let (new_services, existing_services): (Vec<Service>, Vec<Service>) = services
             .into_iter()
             .partition(|service| self.get_index_from_name(service.name()).is_none());
