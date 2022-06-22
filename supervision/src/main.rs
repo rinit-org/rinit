@@ -164,7 +164,7 @@ fn install_tracing() {
         .init();
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
     match opts.subcmd {
