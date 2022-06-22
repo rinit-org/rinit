@@ -5,6 +5,7 @@ use anyhow::{
 use clap::Parser;
 use itertools::Itertools;
 use rinit_ipc::{
+    Connection,
     Message,
     Reply,
 };
@@ -28,7 +29,9 @@ impl StatusCommand {
         );
 
         let message = Message::ServicesStatus(self.services);
-        let reply: Reply = serde_json::from_slice(&message.send()?).unwrap();
+        let mut conn = Connection::new_host_address()?;
+        conn.send_message(message)?;
+        let reply: Reply = serde_json::from_str(&conn.recv()?).unwrap();
         let states = if let Reply::ServicesStates(states) = reply {
             states
         } else {
