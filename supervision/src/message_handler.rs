@@ -13,6 +13,7 @@ use tokio::{
     io::AsyncWriteExt,
     net::UnixStream,
 };
+use tracing::trace;
 
 use crate::{
     live_service::LiveService,
