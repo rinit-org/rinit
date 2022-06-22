@@ -67,7 +67,7 @@ impl DependencyGraph {
     ) -> Result<()> {
         let (new_services, existing_services): (Vec<Service>, Vec<Service>) = services
             .into_iter()
-            .partition(|service| self.nodes_index.get(service.name()).is_none());
+            .partition(|service| self.get_index_from_name(service.name()).is_none());
 
         let index = self.nodes.len();
         self.add_nodes(new_services);
@@ -81,7 +81,7 @@ impl DependencyGraph {
 
         // Update enabled services set and populate dependents
         services_to_enable.iter().for_each(|service| {
-            let index = self.get_index_from_name(service);
+            let index = *self.get_index_from_name(service).unwrap();
             self.enabled_services.insert(index);
             let dependencies = self.nodes[index].service.dependencies().to_owned();
             for dep in dependencies {
@@ -92,7 +92,7 @@ impl DependencyGraph {
         self.check_cycles(
             services_to_enable
                 .iter()
-                .map(|name| self.get_index_from_name(name))
+                .map(|name| *self.get_index_from_name(name).unwrap())
                 .collect(),
         )?;
 
@@ -191,7 +191,12 @@ impl DependencyGraph {
         let mut colors: HashMap<usize, Color> = self
             .nodes
             .iter()
-            .map(|node| (self.get_index_from_name(node.name()), Color::White))
+            .map(|node| {
+                (
+                    *self.get_index_from_name(node.name()).unwrap(),
+                    Color::White,
+                )
+            })
             .collect();
 
         services_to_enable
@@ -213,7 +218,7 @@ impl DependencyGraph {
             .service
             .dependencies()
             .iter()
-            .map(|dep| self.get_index_from_name(dep))
+            .map(|dep| *self.get_index_from_name(dep).unwrap())
             .try_for_each(|dep| -> Result<()> {
                 match colors.get(&dep).unwrap() {
                     Color::White => self.visit(colors, dep),
@@ -260,7 +265,7 @@ impl DependencyGraph {
             .to_owned()
             .iter()
             .for_each(|dep| {
-                let dep_index = self.get_index_from_name(dep);
+                let dep_index = *self.get_index_from_name(dep).unwrap();
                 self.nodes[dep_index].remove_dependent(index);
                 if !self.is_node_required(dep_index) {
                     self.remove_node(dep_index)
@@ -309,8 +314,8 @@ impl DependencyGraph {
     fn get_index_from_name(
         &self,
         name: &str,
-    ) -> usize {
-        *self.nodes_index.get(name).unwrap()
+    ) -> Option<&usize> {
+        self.nodes_index.get(name)
     }
 }
 
