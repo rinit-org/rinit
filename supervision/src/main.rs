@@ -1,6 +1,7 @@
 #![feature(async_closure)]
 #![feature(let_chains)]
 
+mod async_connection;
 pub mod exec_script;
 pub mod kill_process;
 pub mod pidfd_send_signal;
