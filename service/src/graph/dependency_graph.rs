@@ -147,7 +147,7 @@ impl DependencyGraph {
                 let service_index = *self.nodes_index.get(new_service.name()).unwrap();
                 let existing_service = &self.nodes.get(service_index).unwrap().service;
 
-                if existing_service != &new_service {
+                if existing_service == &new_service {
                     return false;
                 }
 
