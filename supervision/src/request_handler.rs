@@ -5,7 +5,7 @@ use futures::{
     stream::StreamExt,
 };
 use rinit_ipc::{
-    Message,
+    Request,
     Reply,
 };
 use rinit_service::service_state::ServiceState;
@@ -20,11 +20,11 @@ use crate::{
     live_service_graph::LiveServiceGraph,
 };
 
-pub struct MessageHandler {
+pub struct RequestHandler {
     graph: LiveServiceGraph,
 }
 
-impl MessageHandler {
+impl RequestHandler {
     pub fn new(graph: LiveServiceGraph) -> Self {
         Self { graph }
     }
@@ -34,18 +34,18 @@ impl MessageHandler {
         stream: UnixStream,
     ) {
         let buf = Self::read(&stream).await;
-        let message: Message = serde_json::from_slice(&buf).unwrap();
-        trace!("Received message from socket: {message:?}");
-        let reply = self.handle(message).await;
+        let request: Request = serde_json::from_slice(&buf).unwrap();
+        trace!("Received request from socket: {request:?}");
+        let reply = self.handle(request).await;
         self.write_stream(stream, reply).await;
     }
 
     pub async fn handle<'a>(
         &self,
-        message: Message,
+        request: Request,
     ) -> Reply {
-        match message {
-            Message::ServiceIsUp(up, name) => {
+        match request {
+            Request::ServiceIsUp(up, name) => {
                 let live_service = self.graph.get_service(&name);
                 live_service.update_state(
                     if up {
@@ -57,7 +57,7 @@ impl MessageHandler {
                 live_service.tx.send(()).unwrap();
                 Reply::Empty
             }
-            Message::ServicesStatus(services) => {
+            Request::ServicesStatus(services) => {
                 let services: Vec<&LiveService> = if services.is_empty() {
                     self.graph.live_services.iter().collect()
                 } else {
@@ -77,7 +77,7 @@ impl MessageHandler {
                     .await;
                 Reply::ServicesStates(states)
             }
-            Message::StartServices(services) => {
+            Request::StartServices(services) => {
                 let mut err = String::new();
                 let futures = services
                     .iter()
@@ -102,7 +102,7 @@ impl MessageHandler {
                 }
                 Reply::Result(if !err.is_empty() { Some(err) } else { None })
             }
-            Message::StopServices(services) => {
+            Request::StopServices(services) => {
                 let mut err = String::new();
                 let futures = services
                     .iter()
@@ -127,11 +127,11 @@ impl MessageHandler {
                 }
                 Reply::Result(if !err.is_empty() { Some(err) } else { None })
             }
-            Message::StartAllServices => {
+            Request::StartAllServices => {
                 self.graph.start_all_services().await;
                 Reply::Empty
             }
-            Message::StopAllServices => {
+            Request::StopAllServices => {
                 self.graph.stop_all_services().await;
                 Reply::Empty
             }

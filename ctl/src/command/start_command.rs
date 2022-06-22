@@ -6,7 +6,7 @@ use anyhow::{
 use clap::Parser;
 use rinit_ipc::{
     Connection,
-    Message,
+    Request,
     Reply,
 };
 
@@ -28,9 +28,9 @@ impl StartCommand {
             "duplicated service found"
         );
 
-        let message = Message::StartServices(self.services);
+        let request = Request::StartServices(self.services);
         let mut conn = Connection::new_host_address()?;
-        conn.send_message(message)?;
+        conn.send_request(request)?;
         let reply: Reply = serde_json::from_str(&conn.recv()?).unwrap();
         let res = if let Reply::Result(res) = reply {
             res

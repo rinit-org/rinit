@@ -10,7 +10,7 @@ use anyhow::{
     Result,
 };
 use async_pidfd::PidFd;
-use rinit_ipc::Message;
+use rinit_ipc::Request;
 use rinit_service::types::{
     Longrun,
     Script,
@@ -102,9 +102,9 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
             }
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
-                let message = Message::ServiceIsUp(true, longrun.name.clone());
+                let request = Request::ServiceIsUp(true, longrun.name.clone());
                 // TODO: log this
-                conn.send_message(message).await?;
+                conn.send_request(request).await?;
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -124,9 +124,9 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
         }
     }
 
-    let message = Message::ServiceIsUp(false, longrun.name.clone());
+    let request = Request::ServiceIsUp(false, longrun.name.clone());
     // TODO: log this
-    conn.send_message(message)
+    conn.send_request(request)
         .await
         .context("unable to notify svc")?;
 

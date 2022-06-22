@@ -10,7 +10,7 @@ use tokio::{
     net::UnixStream,
 };
 
-use crate::Message;
+use crate::Request;
 
 pub struct AsyncConnection {
     stream: UnixStream,
@@ -41,11 +41,11 @@ impl AsyncConnection {
         Ok(())
     }
 
-    pub async fn send_message(
+    pub async fn send_request(
         &mut self,
-        message: Message,
+        request: Request,
     ) -> Result<(), Error> {
-        self.send(&serde_json::to_vec(&message).unwrap()).await
+        self.send(&serde_json::to_vec(&request).unwrap()).await
     }
 
     pub async fn _recv(&mut self) -> Result<String, Error> {

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rinit_ipc::Message;
+use rinit_ipc::Request;
 use rinit_service::types::Oneshot;
 
 use crate::{
@@ -19,7 +19,7 @@ pub async fn supervise_short_lived_process(
     };
     let oneshot: Oneshot = serde_json::from_str(service)?;
     let mut conn = AsyncConnection::new_host_address().await?;
-    let message = Message::ServiceIsUp(
+    let request = Request::ServiceIsUp(
         if start {
             run_short_lived_script(&oneshot.start, signal_wait_fun()).await?
         } else {
@@ -32,7 +32,7 @@ pub async fn supervise_short_lived_process(
     );
 
     // TODO: log this
-    conn.send_message(message).await.unwrap();
+    conn.send_request(request).await.unwrap();
 
     Ok(())
 }

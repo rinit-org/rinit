@@ -12,22 +12,16 @@ use snafu::{
     Snafu,
 };
 
-use crate::Message;
+use crate::Request;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("connection to {socket} failed failed"))]
+    #[snafu(display("connection to {socket} failed"))]
     ConnectionFailed { socket: String, source: io::Error },
-    #[snafu(display("failed to receive message"))]
+    #[snafu(display("failed to read request"))]
     ReadFailed { source: io::Error },
-    #[snafu(display("failed to write message message"))]
+    #[snafu(display("failed to write request"))]
     WriteFailed { source: io::Error },
-    #[snafu(whatever, display("{message}"))]
-    Whatever {
-        message: String,
-        #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, Some)))]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    },
 }
 
 pub struct Connection {
@@ -59,11 +53,11 @@ impl Connection {
         Ok(())
     }
 
-    pub fn send_message(
+    pub fn send_request(
         &mut self,
-        message: Message,
+        request: Request,
     ) -> Result<(), Error> {
-        self.send(&serde_json::to_vec(&message).unwrap())
+        self.send(&serde_json::to_vec(&request).unwrap())
     }
 
     pub fn recv(&mut self) -> Result<String, Error> {

@@ -13,7 +13,7 @@ pub mod supervise_short_lived_process;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
 pub use pidfd_send_signal::pidfd_send_signal;
-use rinit_ipc::Message;
+use rinit_ipc::Request;
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
@@ -21,7 +21,7 @@ pub use supervise_short_lived_process::supervise_short_lived_process;
 use tracing::info;
 pub mod live_service;
 pub mod live_service_graph;
-pub mod message_handler;
+pub mod request_handler;
 
 use std::{
     io,
@@ -41,7 +41,7 @@ use clap::{
     Subcommand,
 };
 use live_service_graph::LiveServiceGraph;
-use message_handler::MessageHandler;
+use request_handler::RequestHandler;
 use rinit_service::config::Config;
 use tokio::{
     fs,
@@ -94,7 +94,7 @@ pub async fn service_control(config: Config) -> Result<()> {
         .run_until(async move {
             info!("Starting rinit!");
             let listener = Rc::new(UnixListener::bind(rinit_ipc::get_host_address()).unwrap());
-            let handler = Rc::new(MessageHandler::new(live_graph));
+            let handler = Rc::new(RequestHandler::new(live_graph));
 
             let listener_clone = listener.clone();
             let handler_clone = handler.clone();
@@ -106,7 +106,7 @@ pub async fn service_control(config: Config) -> Result<()> {
                     },
                     async move {
                         let mut conn = AsyncConnection::new_host_address().await.unwrap();
-                        conn.send_message(Message::StartAllServices).await.unwrap();
+                        conn.send_request(Request::StartAllServices).await.unwrap();
                     },
                 )
             });
