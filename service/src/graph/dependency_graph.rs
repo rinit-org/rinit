@@ -388,6 +388,54 @@ mod test {
     }
 
     #[test]
+    fn add_service_with_multiple_dependencies() {
+        let mut graph = DependencyGraph::new();
+
+        graph
+            .add_services(
+                vec!["foobar".to_string()],
+                vec![
+                    create_new_service("foobar", {
+                        let mut options = ServiceOptions::new();
+                        options.dependencies = vec!["bar".to_string(), "foo".to_string()];
+                        options
+                    }),
+                    create_new_service("bar", ServiceOptions::new()),
+                    create_new_service("foo", ServiceOptions::new()),
+                ],
+            )
+            .unwrap();
+        assert_eq!(graph.nodes.len(), 3);
+    }
+
+    #[test]
+    fn add_service_with_duplicated_services() {
+        let mut graph = DependencyGraph::new();
+
+        graph
+            .add_services(
+                vec!["foo".to_string()],
+                vec![create_new_service("foo", ServiceOptions::new())],
+            )
+            .unwrap();
+
+        graph
+            .add_services(
+                vec!["bar".to_string()],
+                vec![
+                    create_new_service("foo", ServiceOptions::new()),
+                    create_new_service("bar", {
+                        let mut options = ServiceOptions::new();
+                        options.dependencies = vec!["foo".to_string()];
+                        options
+                    }),
+                ],
+            )
+            .unwrap();
+        assert_eq!(graph.nodes.len(), 2);
+    }
+
+    #[test]
     fn add_service_with_unfulfilled_dependency() {
         let mut graph = DependencyGraph::new();
 
