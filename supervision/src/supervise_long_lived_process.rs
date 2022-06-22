@@ -23,6 +23,7 @@ use tokio::{
 };
 
 use crate::{
+    async_connection::AsyncConnection,
     exec_script,
     kill_process,
     run_short_lived_script,
@@ -84,6 +85,7 @@ where
 
 pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
     let longrun: Longrun = serde_json::from_str(service)?;
+    let mut conn = AsyncConnection::new_host_address().await?;
     let mut time_tried = 0;
     loop {
         let script_res = start_process(&longrun.run, signal_wait_fun()).await?;
@@ -102,7 +104,7 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
                 time_tried = 0;
                 let message = Message::ServiceIsUp(true, longrun.name.clone());
                 // TODO: log this
-                message.send().context("unable to notify svc");
+                conn.send_message(message).await?;
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -124,7 +126,9 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
 
     let message = Message::ServiceIsUp(false, longrun.name.clone());
     // TODO: log this
-    message.send().context("unable to notify svc");
+    conn.send_message(message)
+        .await
+        .context("unable to notify svc")?;
 
     Ok(())
 }
