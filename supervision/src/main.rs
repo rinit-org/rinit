@@ -137,7 +137,9 @@ pub async fn service_control(config: Config) -> Result<()> {
         })
         .await;
 
-    fs::remove_file(get_host_address()).await.unwrap();
+    fs::remove_file(rinit_ipc::get_host_address())
+        .await
+        .unwrap();
 
     Ok(())
 }
