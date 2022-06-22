@@ -9,8 +9,10 @@ use rinit_ipc::{
     Reply,
 };
 use rinit_service::service_state::ServiceState;
-use tokio::net::UnixStream;
-use tracing::trace;
+use tokio::{
+    io::AsyncWriteExt,
+    net::UnixStream,
+};
 
 use crate::{
     live_service::LiveService,
@@ -162,22 +164,16 @@ impl MessageHandler {
 
     pub async fn write_stream(
         &self,
-        stream: UnixStream,
+        mut stream: UnixStream,
         reply: Reply,
     ) {
-        match stream.try_write(&serde_json::to_vec(&reply).unwrap()) {
-            Ok(_) => {}
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => {
-                todo!()
-            }
+        if matches!(reply, Reply::Empty) {
+            return;
         }
-        match stream.try_write("\n".as_bytes()) {
-            Ok(_) => {}
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(_) => {
-                todo!()
-            }
-        }
+        stream
+            .write_all(&serde_json::to_vec(&reply).unwrap())
+            .await
+            .unwrap();
+        stream.write("\n".as_bytes()).await.unwrap();
     }
 }
