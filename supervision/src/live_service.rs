@@ -76,17 +76,14 @@ impl LiveService {
 
     /// Wait until we have one of the 3 final states
     pub async fn get_final_state(&self) -> ServiceState {
-        if matches!(
-            *self.state.borrow(),
-            ServiceState::Starting | ServiceState::Stopping
-        ) {
-            if timeout(self.get_timeout(), self.tx.subscribe().recv())
+        let state = *self.state.borrow();
+        if matches!(state, ServiceState::Starting | ServiceState::Stopping)
+            && timeout(self.get_timeout(), self.tx.subscribe().recv())
                 .await
                 .is_err()
-            {
-                // the wait timed out
-                return ServiceState::Down;
-            }
+        {
+            // the wait timed out
+            return ServiceState::Down;
         }
         *self.state.borrow()
     }

@@ -36,11 +36,8 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(socket: &str) -> Result<Self, Error> {
-        let stream = UnixStream::connect(socket).with_context(|_| {
-            ConnectionFailedSnafu {
-                socket: socket.clone(),
-            }
-        })?;
+        let stream =
+            UnixStream::connect(socket).with_context(|_| ConnectionFailedSnafu { socket })?;
         Ok(Self { stream })
     }
 
@@ -53,7 +50,7 @@ impl Connection {
         buf: &[u8],
     ) -> Result<(), Error> {
         self.stream
-            .write_all(&buf)
+            .write_all(buf)
             .with_context(|_| WriteFailedSnafu {})?;
         self.stream
             .write("\n".as_bytes())

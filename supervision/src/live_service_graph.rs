@@ -100,8 +100,8 @@ impl LiveServiceGraph {
         // or is already up. Some other task could have done so while awaiting above
         if state != ServiceState::Starting && state != ServiceState::Up {
             live_service.state.replace(ServiceState::Starting);
-            self.start_dependencies(&live_service).await?;
-            self.start_service_impl(&live_service).await?;
+            self.start_dependencies(live_service).await?;
+            self.start_service_impl(live_service).await?;
         }
         let state = live_service.get_final_state().await;
         ensure!(
@@ -131,7 +131,7 @@ impl LiveServiceGraph {
                     ServiceState::Reset | ServiceState::Down
                 ) {
                     // Awaiting here is safe, as starting services always mean spawning ks-run-*
-                    self.start_service(&dep_service).await
+                    self.start_service(dep_service).await
                 } else {
                     Ok(())
                 }
@@ -160,7 +160,7 @@ impl LiveServiceGraph {
         if let Some((supervise, ser_res)) = res && let Ok(json) = &ser_res {
             // TODO: Add logging and remove unwrap
             let child = Command::new("rsvc")
-                .args(vec![supervise, "start", &json])
+                .args(vec![supervise, "start", json])
                 .stdin(Stdio::null())
                 .stdout(Stdio::inherit())
                 .spawn()
@@ -207,7 +207,7 @@ impl LiveServiceGraph {
     ) -> Result<()> {
         let dependents = self.get_dependents(live_service);
         Self::wait_on_dependents_stopping(&dependents).await?;
-        self.stop_service_impl(&live_service).await
+        self.stop_service_impl(live_service).await
     }
 
     async fn stop_service_impl(
@@ -229,7 +229,7 @@ impl LiveServiceGraph {
                     .unwrap();
             }
             Service::Longrun(_) => {
-                if let Some(pidfd) = &*live_service.pidfd.borrow() {
+                if let Some(pidfd) = live_service.pidfd.take() {
                     // TODO: Add timeout
                     pidfd_send_signal(pidfd.as_raw_fd(), 9)
                         .with_context(|| format!("unable to send signal {:?}", 15))?;
@@ -273,7 +273,6 @@ impl LiveServiceGraph {
         self.live_services
             .get(*self.indexes.get(name).expect("This should never happen"))
             .unwrap()
-            .clone()
     }
 
     pub fn get_mut_service(

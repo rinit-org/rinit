@@ -72,7 +72,7 @@ impl DependencyGraph {
         services_to_enable.iter().try_for_each(|service| {
             if let Some(index) = &self.nodes_index.get(service) {
                 ensure!(
-                    !self.enabled_services.contains(&index),
+                    !self.enabled_services.contains(index),
                     ServiceAlreadyEnabledSnafu { service }
                 );
             }

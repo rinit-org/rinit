@@ -29,8 +29,8 @@ impl MessageHandler {
         Self { graph }
     }
 
-    pub async fn handle_stream<'a>(
-        &'a self,
+    pub async fn handle_stream(
+        &self,
         stream: UnixStream,
     ) {
         let buf = Self::read(&stream).await;
@@ -83,10 +83,10 @@ impl MessageHandler {
                     .iter()
                     .filter(|service| {
                         if !self.graph.indexes.contains_key(service.as_str()) {
-                            err.push_str(&format!("{service} not found\n"));
-                            true
-                        } else {
+                            err = format!("{err}\n{service} not found");
                             false
+                        } else {
+                            true
                         }
                     })
                     .map(async move |service| {
@@ -97,7 +97,7 @@ impl MessageHandler {
                     .collect::<Vec<_>>();
                 for f in futures {
                     if let Err(e) = f.await {
-                        err.push_str(&format!("{e:#?}\n"));
+                        err = format!("{err}\n{e}");
                     }
                 }
                 Reply::Result(if !err.is_empty() { Some(err) } else { None })
@@ -107,11 +107,11 @@ impl MessageHandler {
                 let futures = services
                     .iter()
                     .filter(|service| {
-                        if self.graph.indexes.contains_key(service.as_str()) {
-                            err.push_str(&format!("{service} not found\n"));
-                            true
-                        } else {
+                        if !self.graph.indexes.contains_key(service.as_str()) {
+                            err = format!("{err}\n{service} not found");
                             false
+                        } else {
+                            true
                         }
                     })
                     .map(async move |service| {
@@ -122,7 +122,7 @@ impl MessageHandler {
                     .collect::<Vec<_>>();
                 for f in futures {
                     if let Err(e) = f.await {
-                        err.push_str(&format!("{e:#?}\n"));
+                        err = format!("{err}\n{e}");
                     }
                 }
                 Reply::Result(if !err.is_empty() { Some(err) } else { None })
@@ -175,6 +175,6 @@ impl MessageHandler {
             .write_all(&serde_json::to_vec(&reply).unwrap())
             .await
             .unwrap();
-        stream.write("\n".as_bytes()).await.unwrap();
+        stream.write_all("\n".as_bytes()).await.unwrap();
     }
 }

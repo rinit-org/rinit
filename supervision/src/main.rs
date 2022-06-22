@@ -45,18 +45,16 @@ use message_handler::MessageHandler;
 use rinit_service::config::Config;
 use tokio::{
     fs,
-    io::AsyncWriteExt,
     join,
-    net::{
-        UnixListener,
-        UnixStream,
-    },
+    net::UnixListener,
     select,
     task::{
         self,
         JoinError,
     },
 };
+
+use crate::async_connection::AsyncConnection;
 
 #[macro_use]
 extern crate lazy_static;
@@ -107,14 +105,8 @@ pub async fn service_control(config: Config) -> Result<()> {
                         handler_clone.handle_stream(stream).await;
                     },
                     async move {
-                        let mut stream = UnixStream::connect(rinit_ipc::get_host_address())
-                            .await
-                            .unwrap();
-                        stream
-                            .write_all(&serde_json::to_vec(&Message::StartAllServices).unwrap())
-                            .await
-                            .unwrap();
-                        stream.write("\n".as_bytes()).await.unwrap();
+                        let mut conn = AsyncConnection::new_host_address().await.unwrap();
+                        conn.send_message(Message::StartAllServices).await.unwrap();
                     },
                 )
             });

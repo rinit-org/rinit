@@ -63,11 +63,7 @@ pub fn parse_services(
         // Skip services that we can't found, the dependency graph will
         // handle the error
         to_parse.extend(dependencies.iter().filter_map(|service| {
-            if let Some(file) = get_service_file(service, service_dirs, system) {
-                Some((service.clone(), file))
-            } else {
-                None
-            }
+            get_service_file(service, service_dirs, system).map(|file| (service.clone(), file))
         }));
 
         services_already_parsed.append(&mut dependencies);

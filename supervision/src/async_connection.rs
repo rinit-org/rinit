@@ -32,9 +32,9 @@ impl AsyncConnection {
         &mut self,
         buf: &[u8],
     ) -> Result<(), Error> {
-        self.stream.write_all(&buf).await.context("write failed")?;
+        self.stream.write_all(buf).await.context("write failed")?;
         self.stream
-            .write("\n".as_bytes())
+            .write_all("\n".as_bytes())
             .await
             .context("write failed")?;
 
