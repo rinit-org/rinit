@@ -62,6 +62,8 @@ impl Default for DependencyGraph {
 type Result<T, E = DependencyGraphError> = std::result::Result<T, E>;
 
 impl DependencyGraph {
+    // services_to_enable nor services should have duplicates,
+    // otherwise everything break
     pub fn add_services(
         &mut self,
         services_to_enable: Vec<String>,
@@ -77,7 +79,11 @@ impl DependencyGraph {
             Ok(())
         })?;
 
-        let (new_services, existing_services): (Vec<Service>, Vec<Service>) = services
+        // Split the services into two different vectors
+        // One that contains services that the graph doesn't have
+        // The other contains services that are already inserted in the graph
+        // This way we can optimize the addition of services
+        let (new_services, existing_services) = services
             .into_iter()
             .partition(|service| self.get_index_from_name(service.name()).is_none());
 
