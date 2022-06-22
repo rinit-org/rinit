@@ -23,6 +23,7 @@ use tokio::{
     io::unix::AsyncFd,
     process::Command,
 };
+use tokio_stream::StreamExt;
 use tracing::{
     error,
     warn,
@@ -204,15 +205,15 @@ impl LiveServiceGraph {
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
-        self.stop_service_impl(&live_service).await?;
-        Ok(())
+        let dependents = self.get_dependents(live_service);
+        Self::wait_on_dependents_stopping(&dependents).await?;
+        self.stop_service_impl(&live_service).await
     }
 
     async fn stop_service_impl(
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
-        self.wait_on_deps_stopping(&live_service).await?;
         match &live_service.node.service {
             Service::Oneshot(oneshot) => {
                 // TODO: Add logging and remove unwrap
@@ -284,27 +285,40 @@ impl LiveServiceGraph {
             .unwrap()
     }
 
-    async fn wait_on_deps_stopping(
+    fn get_dependents(
         &self,
         live_service: &LiveService,
-    ) -> Result<()> {
-        let futures: Vec<_> = live_service
+    ) -> Vec<&LiveService> {
+        live_service
             .node
             .dependents
             .iter()
             .map(|dependant| -> &LiveService {
                 self.live_services.get(*dependant).unwrap().to_owned()
             })
-            .map(async move |dependant| -> ServiceState { dependant.get_final_state().await })
-            .collect();
+            .collect()
+    }
 
-        for future in futures {
-            let state = future.await;
-            ensure!(
-                state == ServiceState::Down || state == ServiceState::Reset,
-                "error",
-            );
-        }
+    async fn wait_on_dependents_stopping(dependents: &[&LiveService]) -> Result<()> {
+        let dependents_running = tokio_stream::iter(dependents
+            .iter())
+            // Run this sequentially since we can't stop until each has been stopped
+            .then(async move |dependent| -> (&LiveService, ServiceState) {
+                (dependent, dependent.get_final_state().await)
+            })
+            .filter_map(|(dependent, state)|
+                match state {
+                ServiceState::Reset | ServiceState::Down => None,
+                ServiceState::Up | ServiceState::Starting
+                | ServiceState::Stopping=> Some(dependent),
+            })
+            .collect::<Vec<&LiveService>>()
+            .await;
+
+        ensure!(
+            dependents_running.is_empty(),
+            "Dependants are still running"
+        );
 
         Ok(())
     }
