@@ -9,7 +9,7 @@ rinit-ipc= { path = "../ipc" }
 rinit-parser = { path = "../parser" }
 rinit-service = { path = "../service" }
 anyhow = "1.0.58"
-clap = { version = "3.2.5", features = ["derive"] }
+clap = { version = "3.2.6", features = ["derive"] }
 itertools = "0.10.3"
 serde_json = "1.0.81"
 snafu = { version = "0.7.1", features = ["futures"] }
