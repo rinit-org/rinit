@@ -13,6 +13,8 @@ use crate::Config;
 #[derive(Parser)]
 pub struct DisableCommand {
     services: Vec<String>,
+    #[clap(long = "atomic-changes")]
+    pub atomic_changes: bool,
 }
 
 impl DisableCommand {
@@ -35,9 +37,25 @@ impl DisableCommand {
                 .with_context(|| format!("unable to read graph from file {:?}", graph_file))?[..],
         )
         .context("unable to deserialize the dependency graph")?;
-        graph
-            .remove_services(self.services)
-            .context("unable to remove services in the dependency graph")?;
+        if self.atomic_changes {
+            graph
+                .remove_services(self.services)
+                .context("unable to remove services in the dependency graph")?;
+
+            println!("All the services have been disabled.");
+        } else {
+            self.services
+                .into_iter()
+                .try_for_each(|service| -> Result<()> {
+                    graph
+                        .remove_services(vec![service.clone()])
+                        .with_context(|| {
+                            format!("unable to disable service {service} in the dependency graph")
+                        })?;
+                    println!("The service {service} has been disabled.");
+                    Ok(())
+                })?;
+        }
 
         fs::write(
             &graph_file,
