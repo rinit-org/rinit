@@ -17,11 +17,11 @@ use crate::Request;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("connection to {socket} failed"))]
-    ConnectionFailed { socket: String, source: io::Error },
+    Connection { socket: String, source: io::Error },
     #[snafu(display("failed to read request"))]
-    ReadFailed { source: io::Error },
+    Read { source: io::Error },
     #[snafu(display("failed to write request"))]
-    WriteFailed { source: io::Error },
+    Write { source: io::Error },
 }
 
 pub struct Connection {
@@ -30,8 +30,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(socket: &str) -> Result<Self, Error> {
-        let stream =
-            UnixStream::connect(socket).with_context(|_| ConnectionFailedSnafu { socket })?;
+        let stream = UnixStream::connect(socket).with_context(|_| ConnectionSnafu { socket })?;
         Ok(Self { stream })
     }
 
@@ -43,12 +42,10 @@ impl Connection {
         &mut self,
         buf: &[u8],
     ) -> Result<(), Error> {
-        self.stream
-            .write_all(buf)
-            .with_context(|_| WriteFailedSnafu {})?;
+        self.stream.write_all(buf).with_context(|_| WriteSnafu {})?;
         self.stream
             .write("\n".as_bytes())
-            .with_context(|_| WriteFailedSnafu {})?;
+            .with_context(|_| WriteSnafu {})?;
 
         Ok(())
     }
@@ -64,7 +61,7 @@ impl Connection {
         let mut s = String::new();
         self.stream
             .read_to_string(&mut s)
-            .with_context(|_| ReadFailedSnafu {})?;
+            .with_context(|_| ReadSnafu {})?;
 
         Ok(s)
     }
