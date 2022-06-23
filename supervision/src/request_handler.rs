@@ -5,8 +5,8 @@ use futures::{
     stream::StreamExt,
 };
 use rinit_ipc::{
-    Request,
     Reply,
+    Request,
 };
 use rinit_service::service_state::ServiceState;
 use tokio::{

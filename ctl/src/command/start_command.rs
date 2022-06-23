@@ -6,8 +6,8 @@ use anyhow::{
 use clap::Parser;
 use rinit_ipc::{
     Connection,
-    Request,
     Reply,
+    Request,
 };
 
 use crate::Config;

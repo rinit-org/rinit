@@ -6,8 +6,8 @@ use clap::Parser;
 use itertools::Itertools;
 use rinit_ipc::{
     Connection,
-    Request,
     Reply,
+    Request,
 };
 
 use crate::Config;
