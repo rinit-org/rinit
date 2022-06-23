@@ -43,7 +43,7 @@ async fn start_process<F>(
 where
     F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
 {
-    let script_timeout = Duration::from_millis(script.timeout as u64);
+    let script_timeout = Duration::from_millis(script.timeout.unwrap() as u64);
 
     let child = exec_script(script)
         .await
@@ -62,7 +62,7 @@ where
             }
         }
         _ = wait() => {
-            kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+            kill_process(&pidfd, script.down_signal.unwrap(), script.timeout_kill.unwrap()).await?;
             ScriptResult::SignalReceived
         }
     })
@@ -84,7 +84,9 @@ where
 }
 
 pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
-    let longrun: Longrun = serde_json::from_str(service)?;
+    let mut longrun: Longrun = serde_json::from_str(service)?;
+    longrun.run.set_defaults();
+    longrun.finish.as_mut().map(|stop| stop.set_defaults());
     let mut conn = AsyncConnection::new_host_address().await?;
     let mut time_tried = 0;
     loop {
@@ -93,7 +95,7 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
         match script_res {
             ScriptResult::Exited(_) => {
                 time_tried += 1;
-                if time_tried == longrun.run.max_deaths {
+                if time_tried == longrun.run.max_deaths.unwrap() {
                     break;
                 }
                 if let Some(finish_script) = &longrun.finish {
@@ -110,8 +112,12 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
                     ScriptResult::Exited(_) => {}
                     ScriptResult::SignalReceived => {
                         // stop running
-                        kill_process(&pidfd, longrun.run.down_signal, longrun.run.timeout_kill)
-                            .await?;
+                        kill_process(
+                            &pidfd,
+                            longrun.run.down_signal.unwrap(),
+                            longrun.run.timeout_kill.unwrap(),
+                        )
+                        .await?;
                         if let Some(finish_script) = &longrun.finish {
                             let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                         }
@@ -154,8 +160,9 @@ mod test {
     async fn test_start_process() {
         // sleep for 100ms
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.01".to_string());
+        script.set_defaults();
         // wait for 1ms
-        script.timeout = 1;
+        script.timeout = Some(1);
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
             ScriptResult::Running(..)
@@ -165,7 +172,8 @@ mod test {
     #[tokio::test]
     async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
-        script.timeout = 5;
+        script.set_defaults();
+        script.timeout = Some(5);
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
             ScriptResult::Exited(..)
@@ -175,7 +183,8 @@ mod test {
     #[tokio::test]
     async fn test_supervise() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
-        script.timeout = 1;
+        script.set_defaults();
+        script.timeout = Some(1);
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {
@@ -189,7 +198,8 @@ mod test {
     #[tokio::test]
     async fn test_supervise_signal() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 1".to_string());
-        script.timeout = 1;
+        script.set_defaults();
+        script.timeout = Some(1);
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {

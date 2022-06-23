@@ -39,7 +39,7 @@ pub async fn run_short_lived_script<F>(
 where
     F: FnMut() -> WaitFn,
 {
-    let script_timeout = Duration::from_millis(script.timeout as u64);
+    let script_timeout = Duration::from_millis(script.timeout.unwrap() as u64);
 
     let mut time_tried = 0;
     let success = loop {
@@ -69,16 +69,26 @@ where
                 }
             }
             ScriptResult::SignalReceived => {
-                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+                kill_process(
+                    &pidfd,
+                    script.down_signal.unwrap(),
+                    script.timeout_kill.unwrap(),
+                )
+                .await?;
                 break false;
             }
             ScriptResult::TimedOut => {
-                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+                kill_process(
+                    &pidfd,
+                    script.down_signal.unwrap(),
+                    script.timeout_kill.unwrap(),
+                )
+                .await?;
             }
         }
 
         time_tried += 1;
-        if time_tried == script.max_deaths {
+        if time_tried == script.max_deaths.unwrap() {
             break false;
         }
     };
@@ -105,37 +115,42 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_script_success() {
-        let script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
+        let mut script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
+        script.set_defaults();
         assert!(run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_failure() {
-        let script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
+        let mut script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
+        script.set_defaults();
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_timeout() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 15".to_string());
-        script.timeout = 10;
+        script.set_defaults();
+        script.timeout = Some(10);
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_force_kill() {
         let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
-        script.timeout = 10;
-        script.timeout_kill = 10;
-        script.down_signal = 0;
-        script.max_deaths = 1;
+        script.set_defaults();
+        script.timeout = Some(10);
+        script.timeout_kill = Some(10);
+        script.down_signal = Some(0);
+        script.max_deaths = Some(1);
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_signal_received() {
         let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
-        script.timeout = 100000;
+        script.set_defaults();
+        script.timeout = Some(100000);
         assert!(!run_short_lived_script(&script, wait!(0)).await.unwrap());
     }
 }
