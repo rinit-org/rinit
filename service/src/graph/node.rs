@@ -15,8 +15,11 @@ use crate::types::{
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Node {
+    #[serde(flatten)]
     pub service: Service,
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     pub dependents: HashSet<usize>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     providers: HashMap<usize, Provider>,
 }
 

@@ -6,6 +6,7 @@ use serde::{
 use super::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(untagged)]
 pub enum Service {
     Bundle(Bundle),
     Longrun(Longrun),

@@ -5,6 +5,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use serde_with::skip_serializing_none;
 use snafu::Snafu;
 
 use super::script_config::ScriptConfig;
@@ -39,6 +40,7 @@ impl TryFrom<String> for ScriptPrefix {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Script {
     pub prefix: ScriptPrefix,

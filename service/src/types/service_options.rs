@@ -6,8 +6,11 @@ use serde::{
 /// Store options for Longrun and Oneshot
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ServiceOptions {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requires_one: Vec<String>,
     pub auto_start: bool,
 }
