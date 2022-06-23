@@ -15,10 +15,7 @@ use rinit_service::{
     service_state::ServiceState,
     types::Service,
 };
-use snafu::{
-    ResultExt,
-    Snafu,
-};
+use thiserror::Error;
 use tokio::{
     io::unix::AsyncFd,
     process::Command,
@@ -35,89 +32,67 @@ pub struct LiveServiceGraph {
     pub live_services: Vec<LiveService>,
 }
 
-#[derive(Debug, Snafu)]
-pub enum SystemError {
-    #[snafu()]
-    ReadGraphError {
-        source: io::Error,
-    },
-    JsonDeserializeError {
-        source: serde_json::Error,
-    },
-    SystemJoinError {
-        source: tokio::task::JoinError,
-    },
-    PidFdError {
-        source: io::Error,
-    },
-    PidFdSendSignalError {
-        source: io::Error,
-    },
-    PidFdWaitError {
-        source: io::Error,
-    },
+#[derive(Error, Debug)]
+pub enum LiveGraphError {
+    #[error("{}", .0)]
+    SystemError(SystemError),
+    #[error("{}", .0)]
+    LogicError(LogicError),
 }
 
-#[derive(Debug, Snafu)]
+#[derive(Error, Debug)]
+pub enum SystemError {
+    #[error("error reading dependency graph from disk")]
+    ReadGraphError { source: io::Error },
+    #[error("error deserializing json")]
+    JsonDeserializeError { source: serde_json::Error },
+    #[error("error when joining tasks")]
+    JoinError { source: tokio::task::JoinError },
+    #[error("error when creating a pidfd")]
+    PidFdError { source: io::Error },
+    #[error("error when sending a signal through")]
+    PidFdSendSignalError { source: io::Error },
+    #[error("error when waiting on a pidfd")]
+    PidFdWaitError { source: io::Error },
+}
+
+#[derive(Error, Debug)]
 pub enum LogicError {
-    #[snafu()]
-    DependencyFailedToStart {
-        service: String,
-        dependency: String,
-    },
-    #[snafu()]
+    #[error("dependency {dependency} failed to start for service {service}")]
+    DependencyFailedToStart { service: String, dependency: String },
+    #[error("service {service} dependendents {dependents:?} are still running")]
     DependentsStillRunning {
         service: String,
         dependents: Vec<String>,
     },
-    ServiceFailedToStart {
-        service: String,
-    },
+    #[error("service {service} failed to start")]
+    ServiceFailedToStart { service: String },
 }
 
-type Result<T> = std::result::Result<std::result::Result<T, LogicError>, SystemError>;
-
-macro_rules! ok {
-    ($val:expr) => {
-        Ok(Ok($val))
-    };
-}
-
-macro_rules! try_ {
-    ($expr:expr) => {
-        let res = $expr?;
-        if res.is_err() {
-            return Ok(res);
-        }
-    };
-}
-
-macro_rules! ensure_logic {
-    ($test:expr, $err: expr) => {
-        if $test {
-            return Ok($err.fail());
-        }
-    };
-}
+type Result<T> = std::result::Result<T, LiveGraphError>;
 
 impl LiveServiceGraph {
     pub fn new(config: Config) -> Result<Self> {
         let graph_file = config.get_graph_filename();
         let graph: DependencyGraph = if graph_file.exists() {
-            serde_json::from_slice(&std::fs::read(graph_file).with_context(|_| ReadGraphSnafu {})?)
-                .with_context(|_| JsonDeserializeSnafu {})?
+            serde_json::from_slice(&std::fs::read(graph_file).map_err(|source| {
+                LiveGraphError::SystemError(SystemError::ReadGraphError { source })
+            })?)
+            .map_err(|source| {
+                LiveGraphError::SystemError(SystemError::JsonDeserializeError { source })
+            })?
         } else {
             DependencyGraph::new()
         };
         let nodes: Vec<_> = graph.nodes.into_iter().map(LiveService::new).collect();
-        Ok(Ok(Self {
+        Ok(Self {
             indexes: nodes
                 .iter()
                 .enumerate()
                 .map(|(i, el)| (el.node.name().to_owned(), i))
                 .collect(),
             live_services: nodes,
-        }))
+        })
     }
 
     pub async fn start_all_services(&self) -> Vec<Result<()>> {
@@ -133,7 +108,7 @@ impl LiveServiceGraph {
                             // start_service_impl
                             self.start_service(live_service).await
                         } else {
-                            ok!(())
+                            Ok(())
                         }
                     });
                 });
@@ -142,10 +117,19 @@ impl LiveServiceGraph {
         .await;
         futures
             .into_iter()
-            // Here we either lose the system error or the join error
-            // let's consider the join error (which could even be a panic)
-            // more important
-            .map(|res| res.with_context(|_| SystemJoinSnafu {})?)
+            .map(|res| {
+                // Here we either lose the system error or the join error
+                // let's consider the join error (which could even be a panic)
+                // more important
+                match res {
+                    Ok(val) => val,
+                    Err(err) => {
+                        Err(LiveGraphError::SystemError(SystemError::JoinError {
+                            source: err,
+                        }))
+                    }
+                }
+            })
             .collect()
     }
 
@@ -156,7 +140,7 @@ impl LiveServiceGraph {
     ) -> Result<()> {
         let mut state = *live_service.state.borrow();
         if state == ServiceState::Up {
-            return ok!(());
+            return Ok(());
         }
         while state == ServiceState::Stopping {
             state = live_service.get_final_state().await;
@@ -165,17 +149,19 @@ impl LiveServiceGraph {
         // or is already up. Some other task could have done so while awaiting above
         if state != ServiceState::Starting && state != ServiceState::Up {
             live_service.state.replace(ServiceState::Starting);
-            try_!(self.start_dependencies(live_service).await);
-            try_!(self.start_service_impl(live_service).await);
+            self.start_dependencies(live_service).await?;
+            self.start_service_impl(live_service).await?;
         }
         let state = live_service.get_final_state().await;
-        ensure_logic!(
-            state == ServiceState::Up,
-            ServiceFailedToStartSnafu {
-                service: live_service.node.name()
-            }
-        );
-        ok!(())
+        if state != ServiceState::Up {
+            Err(LiveGraphError::LogicError(
+                LogicError::ServiceFailedToStart {
+                    service: live_service.node.name().to_string(),
+                },
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     async fn start_dependencies(
@@ -199,22 +185,22 @@ impl LiveServiceGraph {
                     // Awaiting here is safe, as starting services always mean spawning ks-run-*
                     self.start_service(dep_service).await
                 } else {
-                    ok!(())
+                    Ok(())
                 }
             })
             .collect();
         for future in futures {
-            try_!(future.await);
+            future.await?;
         }
 
-        ok!(())
+        Ok(())
     }
 
     async fn start_service_impl(
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
-        try_!(self.wait_on_deps_starting(live_service).await);
+        self.wait_on_deps_starting(live_service).await?;
         let res = match &live_service.node.service {
             Service::Oneshot(oneshot) => Some(("oneshot", serde_json::to_string(&oneshot))),
             Service::Longrun(longrun) => Some(("longrun", serde_json::to_string(&longrun))),
@@ -242,7 +228,7 @@ impl LiveServiceGraph {
             .unwrap()).unwrap()));
         }
 
-        ok!(())
+        Ok(())
     }
 
     async fn wait_on_deps_starting(
@@ -252,16 +238,17 @@ impl LiveServiceGraph {
         for dep in live_service.node.service.dependencies() {
             let dep_service = self.get_service(dep);
             let state = dep_service.get_final_state().await;
-            ensure_logic!(
-                state != ServiceState::Up,
-                DependencyFailedToStartSnafu {
-                    service: live_service.node.name(),
-                    dependency: dep
-                }
-            );
+            if state != ServiceState::Up {
+                return Err(LiveGraphError::LogicError(
+                    LogicError::DependencyFailedToStart {
+                        service: live_service.node.name().to_string(),
+                        dependency: dep.to_string(),
+                    },
+                ));
+            }
         }
 
-        ok!(())
+        Ok(())
     }
 
     pub async fn stop_service(
@@ -269,7 +256,7 @@ impl LiveServiceGraph {
         live_service: &LiveService,
     ) -> Result<()> {
         let dependents = self.get_dependents(live_service);
-        try_!(Self::wait_on_dependents_stopping(live_service.node.name(), &dependents).await);
+        Self::wait_on_dependents_stopping(live_service.node.name(), &dependents).await?;
         self.stop_service_impl(live_service).await
     }
 
@@ -294,17 +281,20 @@ impl LiveServiceGraph {
             Service::Longrun(_) => {
                 if let Some(pidfd) = live_service.pidfd.take() {
                     // TODO: Add timeout
-                    pidfd_send_signal(pidfd.as_raw_fd(), 9)
-                        .with_context(|_| PidFdSendSignalSnafu {})?;
+                    pidfd_send_signal(pidfd.as_raw_fd(), 9).map_err(|source| {
+                        LiveGraphError::SystemError(SystemError::PidFdSendSignalError { source })
+                    })?;
                     let _ready = pidfd.readable().await.unwrap();
-                    pidfd.get_ref().wait().with_context(|_| PidFdWaitSnafu {})?;
+                    pidfd.get_ref().wait().map_err(|source| {
+                        LiveGraphError::SystemError(SystemError::PidFdWaitError { source })
+                    })?;
                 }
             }
             Service::Bundle(_) => {}
             Service::Virtual(_) => {}
         }
 
-        ok!(())
+        Ok(())
     }
 
     pub async fn stop_all_services(&self) {
@@ -317,7 +307,7 @@ impl LiveServiceGraph {
                     s.spawn(async move {
                         if live_service.get_final_state().await == ServiceState::Up {
                             // TODO: Log
-                            self.stop_service(live_service).await.unwrap().unwrap();
+                            self.stop_service(live_service).await.unwrap();
                         }
                     });
                 }
@@ -381,14 +371,15 @@ impl LiveServiceGraph {
             .collect::<Vec<String>>()
             .await;
 
-        ensure_logic!(
-            dependents_running.is_empty(),
-            DependentsStillRunningSnafu {
-                service: name,
-                dependents: dependents_running
-            }
-        );
-
-        ok!(())
+        if !dependents_running.is_empty() {
+            Err(LiveGraphError::LogicError(
+                LogicError::DependentsStillRunning {
+                    service: name.to_string(),
+                    dependents: dependents_running,
+                },
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
