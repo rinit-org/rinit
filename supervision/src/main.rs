@@ -84,11 +84,12 @@ pub async fn service_control(config: Config) -> Result<()> {
     install_tracing();
 
     let local = task::LocalSet::new();
+    let live_graph = LiveServiceGraph::new(config).unwrap().unwrap();
+
     // Setup socket listener
     fs::create_dir_all(Path::new(rinit_ipc::get_host_address()).parent().unwrap())
         .await
         .unwrap();
-    let live_graph = LiveServiceGraph::new(config).unwrap();
 
     local
         .run_until(async move {

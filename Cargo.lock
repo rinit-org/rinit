@@ -697,6 +697,7 @@ dependencies = [
  "rinit-ipc",
  "rinit-service",
  "serde_json",
+ "snafu",
  "tokio",
  "tokio-stream",
  "tracing",
