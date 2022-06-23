@@ -39,7 +39,7 @@ impl DisableCommand {
         .context("unable to deserialize the dependency graph")?;
         if self.atomic_changes {
             graph
-                .remove_services(self.services)
+                .disable_services(self.services)
                 .context("unable to remove services in the dependency graph")?;
 
             println!("All the services have been disabled.");
@@ -48,7 +48,7 @@ impl DisableCommand {
                 .into_iter()
                 .try_for_each(|service| -> Result<()> {
                     graph
-                        .remove_services(vec![service.clone()])
+                        .disable_services(vec![service.clone()])
                         .with_context(|| {
                             format!("unable to disable service {service} in the dependency graph")
                         })?;

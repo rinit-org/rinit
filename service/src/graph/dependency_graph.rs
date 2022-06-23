@@ -249,7 +249,7 @@ impl DependencyGraph {
         Ok(())
     }
 
-    pub fn remove_services(
+    pub fn disable_services(
         &mut self,
         services: Vec<String>,
     ) -> Result<()> {
@@ -482,7 +482,7 @@ mod test {
     }
 
     #[test]
-    fn remove_service() {
+    fn disable_service() {
         let mut graph = DependencyGraph::new();
 
         graph
@@ -492,12 +492,12 @@ mod test {
             )
             .unwrap();
 
-        graph.remove_services(vec!["foo".to_string()]).unwrap();
+        graph.disable_services(vec!["foo".to_string()]).unwrap();
         assert_eq!(graph.nodes.len(), 0);
     }
 
     #[test]
-    fn remove_service_with_dependency() {
+    fn disable_service_with_dependency() {
         let mut graph = DependencyGraph::new();
 
         graph
@@ -514,7 +514,7 @@ mod test {
             )
             .unwrap();
 
-        graph.remove_services(vec!["foo".to_string()]).unwrap();
+        graph.disable_services(vec!["foo".to_string()]).unwrap();
         assert_eq!(graph.nodes.len(), 0);
     }
 }

@@ -85,16 +85,16 @@ impl SectionBuilder for ScriptBuilder {
                     .with_context(|| NoExecuteFoundSnafu)?;
                 let config = ScriptConfig::new();
                 let timeout =
-                    get_int_or_default(values, "timeout", Script::DEFAULT_SCRIPT_TIMEOUT)?;
+                    get_int_or_default(values, "timeout", Script::DEFAULT_TIMEOUT)?;
                 let timeout_kill = get_int_or_default(
                     values,
                     "timeout_kill",
-                    Script::DEFAULT_SCRIPT_TIMEOUT_KILL,
+                    Script::DEFAULT_TIMEOUT_KILL,
                 )?;
                 let max_deaths = get_int_or_default(
                     values,
                     "max_deaths",
-                    Script::DEFAULT_SCRIPT_MAX_DEATHS,
+                    Script::DEFAULT_MAX_DEATHS,
                 )?;
                 let down_signal = values
                     .remove("down_signal")
