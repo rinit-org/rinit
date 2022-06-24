@@ -43,7 +43,7 @@ async fn start_process<F>(
 where
     F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
 {
-    let script_timeout = Duration::from_millis(script.timeout.unwrap() as u64);
+    let script_timeout = Duration::from_millis(script.timeout as u64);
 
     let child = exec_script(script)
         .await
@@ -62,7 +62,7 @@ where
             }
         }
         _ = wait() => {
-            kill_process(&pidfd, script.down_signal.unwrap(), script.timeout_kill.unwrap()).await?;
+            kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
             ScriptResult::SignalReceived
         }
     })
@@ -93,7 +93,7 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
         match script_res {
             ScriptResult::Exited(_) => {
                 time_tried += 1;
-                if time_tried == longrun.run.max_deaths.unwrap() {
+                if time_tried == longrun.run.max_deaths {
                     break;
                 }
                 if let Some(finish_script) = &longrun.finish {
@@ -110,12 +110,8 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
                     ScriptResult::Exited(_) => {}
                     ScriptResult::SignalReceived => {
                         // stop running
-                        kill_process(
-                            &pidfd,
-                            longrun.run.down_signal.unwrap(),
-                            longrun.run.timeout_kill.unwrap(),
-                        )
-                        .await?;
+                        kill_process(&pidfd, longrun.run.down_signal, longrun.run.timeout_kill)
+                            .await?;
                         if let Some(finish_script) = &longrun.finish {
                             let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                         }
@@ -159,7 +155,7 @@ mod test {
         // sleep for 100ms
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.01".to_string());
         // wait for 1ms
-        script.timeout = Some(1);
+        script.timeout = 1;
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
             ScriptResult::Running(..)
@@ -169,7 +165,7 @@ mod test {
     #[tokio::test]
     async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
-        script.timeout = Some(5);
+        script.timeout = 5;
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
             ScriptResult::Exited(..)
@@ -179,7 +175,7 @@ mod test {
     #[tokio::test]
     async fn test_supervise() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
-        script.timeout = Some(1);
+        script.timeout = 1;
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {
@@ -193,7 +189,7 @@ mod test {
     #[tokio::test]
     async fn test_supervise_signal() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 1".to_string());
-        script.timeout = Some(1);
+        script.timeout = 1;
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
         if let ScriptResult::Running(pidfd) = pidfd {

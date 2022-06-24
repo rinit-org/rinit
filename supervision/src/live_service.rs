@@ -51,9 +51,9 @@ impl LiveService {
             Service::Bundle(_) => unreachable!(),
             Service::Longrun(longrun) => {
                 if *self.state.borrow() == ServiceState::Starting {
-                    longrun.run.timeout.unwrap() * longrun.run.max_deaths.unwrap() as u32
+                    longrun.run.timeout * longrun.run.max_deaths as u32
                 } else {
-                    longrun.run.timeout_kill.unwrap()
+                    longrun.run.timeout_kill
                         + if let Some(finish) = &longrun.finish {
                             finish.get_maximum_time()
                         } else {

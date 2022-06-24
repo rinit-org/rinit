@@ -44,18 +44,33 @@ impl TryFrom<String> for ScriptPrefix {
 pub struct Script {
     pub prefix: ScriptPrefix,
     pub execute: String,
-    #[serde(flatten, default)]
-    pub config: Option<ScriptConfig>,
-    #[serde(default = "Script::default_timeout")]
-    pub timeout: Option<u32>,
-    #[serde(default = "Script::default_timeout_kill")]
-    pub timeout_kill: Option<u32>,
-    #[serde(default = "Script::default_max_deaths")]
-    pub max_deaths: Option<u8>,
-    #[serde(default = "Script::default_down_signal")]
-    pub down_signal: Option<i32>,
-    #[serde(default = "Script::default_autostart")]
-    pub autostart: Option<bool>,
+    #[serde(flatten, default, skip_serializing_if = "ScriptConfig::is_empty")]
+    pub config: ScriptConfig,
+    #[serde(
+        default = "Script::default_timeout",
+        skip_serializing_if = "Script::is_default_timeout"
+    )]
+    pub timeout: u32,
+    #[serde(
+        default = "Script::default_timeout_kill",
+        skip_serializing_if = "Script::is_default_timeout_kill"
+    )]
+    pub timeout_kill: u32,
+    #[serde(
+        default = "Script::default_max_deaths",
+        skip_serializing_if = "Script::is_default_max_deaths"
+    )]
+    pub max_deaths: u8,
+    #[serde(
+        default = "Script::default_down_signal",
+        skip_serializing_if = "Script::is_default_down_signal"
+    )]
+    pub down_signal: i32,
+    #[serde(
+        default = "Script::default_autostart",
+        skip_serializing_if = "Script::is_default_autostart"
+    )]
+    pub autostart: bool,
     pub user: Option<String>,
     pub group: Option<String>,
     pub notify: Option<u8>,
@@ -67,24 +82,44 @@ impl Script {
     pub const DEFAULT_MAX_DEATHS: u8 = 3;
     pub const DEFAULT_DOWN_SIGNAL: i32 = libc::SIGTERM;
 
-    const fn default_timeout() -> Option<u32> {
-        Some(Self::DEFAULT_TIMEOUT)
+    const fn default_timeout() -> u32 {
+        Self::DEFAULT_TIMEOUT
     }
 
-    const fn default_timeout_kill() -> Option<u32> {
-        Some(Self::DEFAULT_TIMEOUT_KILL)
+    fn is_default_timeout(timeout: &u32) -> bool {
+        *timeout == Self::DEFAULT_TIMEOUT
     }
 
-    const fn default_max_deaths() -> Option<u8> {
-        Some(Self::DEFAULT_MAX_DEATHS)
+    const fn default_timeout_kill() -> u32 {
+        Self::DEFAULT_TIMEOUT_KILL
     }
 
-    const fn default_down_signal() -> Option<i32> {
-        Some(Self::DEFAULT_DOWN_SIGNAL)
+    fn is_default_timeout_kill(timeout_kill: &u32) -> bool {
+        *timeout_kill == Self::DEFAULT_TIMEOUT_KILL
     }
 
-    const fn default_autostart() -> Option<bool> {
-        Some(true)
+    const fn default_max_deaths() -> u8 {
+        Self::DEFAULT_MAX_DEATHS
+    }
+
+    fn is_default_max_deaths(max_deaths: &u8) -> bool {
+        *max_deaths == Self::DEFAULT_MAX_DEATHS
+    }
+
+    const fn default_down_signal() -> i32 {
+        Self::DEFAULT_DOWN_SIGNAL
+    }
+
+    const fn is_default_down_signal(signal: &i32) -> bool {
+        *signal == Self::DEFAULT_DOWN_SIGNAL
+    }
+
+    const fn default_autostart() -> bool {
+        true
+    }
+
+    fn is_default_autostart(autostart: &bool) -> bool {
+        *autostart
     }
 
     // This function always set the default values instead of leaving None
@@ -96,7 +131,7 @@ impl Script {
         Self {
             prefix,
             execute,
-            config: Some(ScriptConfig::new()),
+            config: ScriptConfig::new(),
             timeout: Self::default_timeout(),
             timeout_kill: Self::default_timeout_kill(),
             max_deaths: Self::default_max_deaths(),
@@ -108,30 +143,7 @@ impl Script {
         }
     }
 
-    // This function returns a new Script without setting the defaults and leaving
-    // the fields to None. Used in parser tests
-    pub fn new_empty(
-        prefix: ScriptPrefix,
-        execute: String,
-    ) -> Self {
-        Self {
-            prefix,
-            execute,
-            config: None,
-            timeout: None,
-            timeout_kill: None,
-            max_deaths: None,
-            down_signal: None,
-            autostart: None,
-            user: None,
-            group: None,
-            notify: None,
-        }
-    }
-
     pub fn get_maximum_time(&self) -> u32 {
-        // unwrap here is safe because these values are either set by Self::new() or by
-        // serde during deserialization
-        (self.timeout.unwrap() + self.timeout_kill.unwrap()) * self.max_deaths.unwrap() as u32
+        (self.timeout + self.timeout_kill) * self.max_deaths as u32
     }
 }

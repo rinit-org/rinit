@@ -165,7 +165,7 @@ mod test {
         assert_eq!(
             Service::Oneshot(Oneshot {
                 name: "foo".to_string(),
-                start: Script::new_empty(ScriptPrefix::Bash, "    exit 0".to_string()),
+                start: Script::new(ScriptPrefix::Bash, "    exit 0".to_string()),
                 stop: None,
                 options: ServiceOptions::new(),
             }),
@@ -184,11 +184,8 @@ mod test {
         assert_eq!(
             Service::Oneshot(Oneshot {
                 name: "foo".to_string(),
-                start: Script::new_empty(ScriptPrefix::Bash, "    exit 0".to_string()),
-                stop: Some(Script::new_empty(
-                    ScriptPrefix::Sh,
-                    "    exit 1".to_string()
-                )),
+                start: Script::new(ScriptPrefix::Bash, "    exit 0".to_string()),
+                stop: Some(Script::new(ScriptPrefix::Sh, "    exit 1".to_string())),
                 options: ServiceOptions::new(),
             }),
             parse_service(
@@ -206,7 +203,7 @@ mod test {
         assert_eq!(
             Service::Longrun(Longrun {
                 name: "foo".to_string(),
-                run: Script::new_empty(ScriptPrefix::Bash, "    loop".to_string()),
+                run: Script::new(ScriptPrefix::Bash, "    loop".to_string()),
                 finish: None,
                 options: ServiceOptions::new(),
             }),

@@ -8,6 +8,7 @@ use nix::sys::signal::Signal;
 use rinit_service::types::{
     InvalidScriptPrefixError,
     Script,
+    ScriptConfig,
 };
 use snafu::{
     OptionExt,
@@ -46,23 +47,22 @@ impl ScriptBuilder {
     }
 }
 
-fn parse_int<T>(
+fn get_int_or_default<T>(
     values: &mut HashMap<&'static str, String>,
     key: &'static str,
-) -> Result<Option<T>, ScriptBuilderError>
+    default: T,
+) -> Result<T, ScriptBuilderError>
 where
     T: std::str::FromStr<Err = ParseIntError>,
 {
-    let val = values.remove(key);
-    if let Some(val) = val {
-        Ok(Some(val.parse::<T>().with_context(|_| {
+    values
+        .remove(key)
+        .map_or(Ok(default), |value| value.parse())
+        .with_context(|_| {
             InvalidIntegerSnafu {
                 key: key.to_string(),
             }
-        })?))
-    } else {
-        Ok(None)
-    }
+        })
 }
 
 impl SectionBuilder for ScriptBuilder {
@@ -84,36 +84,36 @@ impl SectionBuilder for ScriptBuilder {
                     .remove("execute")
                     .with_context(|| NoExecuteFoundSnafu)?;
                 let timeout =
-                    parse_int(values, "timeout")?;
-                let timeout_kill = parse_int(
+                    get_int_or_default(values, "timeout", Script::DEFAULT_TIMEOUT)?;
+                let timeout_kill = get_int_or_default(
                     values,
                     "timeout_kill",
+                    Script::DEFAULT_TIMEOUT_KILL,
                 )?;
-                let max_deaths = parse_int(
+                let max_deaths = get_int_or_default(
                     values,
                     "max_deaths",
+                    Script::DEFAULT_MAX_DEATHS,
                 )?;
                 let down_signal = values
-                    .remove("down_signal");
-                let down_signal = if let Some(down_signal) = down_signal {
-                    Some(down_signal.parse::<Signal>()
-                    .with_context(|_| InvalidSignalSnafu)? as i32)
-                } else { None };
+                    .remove("down_signal")
+                    .map_or(Ok(Script::DEFAULT_DOWN_SIGNAL), |down_signal| down_signal.parse::<Signal>().map(|sig| sig as i32))
+                    .with_context(|_| InvalidSignalSnafu)?;
 
                 let autostart = values
-                    .remove("autostart");
-                let autostart = if let Some(autostart) = autostart {
-                        Some(match autostart.as_str() {
+                    .remove("autostart")
+                    .map_or(Ok(true), |autostart| {
+                        match autostart.as_str() {
                             "yes" => Ok(true),
                             "no" => Ok(false),
                             _ => Err(snafu::NoneError),
                         }
+                    })
                     .with_context(|_| {
                         InvalidBooleanSnafu {
                             key: "autostart".to_string(),
                         }
-                    })?)
-                    } else { None };
+                    })?;
                 let user = values.remove("user");
                 let group = values.remove("group");
                 let notify = values
@@ -130,7 +130,7 @@ impl SectionBuilder for ScriptBuilder {
                     prefix,
                     execute,
                     // TODO This should be parsed
-                    config: None,
+                    config: ScriptConfig::new(),
                     timeout,
                     timeout_kill,
                     max_deaths,

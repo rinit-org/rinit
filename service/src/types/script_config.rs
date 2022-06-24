@@ -40,6 +40,10 @@ impl ScriptConfig {
             None => Err(format!("'{}' has not been set", key)),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.contents.is_empty()
+    }
 }
 
 impl Default for ScriptConfig {
