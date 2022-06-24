@@ -54,6 +54,8 @@ pub enum SystemError {
     PidFdSendSignalError { source: io::Error },
     #[error("error when waiting on a pidfd")]
     PidFdWaitError { source: io::Error },
+    #[error("error when spawning the supervisor")]
+    SpawnError { source: io::Error },
 }
 
 #[derive(Error, Debug)]
@@ -218,8 +220,8 @@ impl LiveServiceGraph {
                 ;
                 match res {
                     Ok(child) => break child,
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {},
-                    Err(_) => unreachable!()
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {},
+                    Err(err) => {return Err(LiveGraphError::SystemError(SystemError::SpawnError{source: err}))},
                 }
             };
 
