@@ -7,6 +7,7 @@ use serde::{
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ScriptConfig {
+    #[serde(default)]
     contents: HashMap<String, String>,
 }
 
