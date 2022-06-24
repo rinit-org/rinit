@@ -100,20 +100,6 @@ impl SectionBuilder for ScriptBuilder {
                     .map_or(Ok(Script::DEFAULT_DOWN_SIGNAL), |down_signal| down_signal.parse::<Signal>().map(|sig| sig as i32))
                     .with_context(|_| InvalidSignalSnafu)?;
 
-                let autostart = values
-                    .remove("autostart")
-                    .map_or(Ok(true), |autostart| {
-                        match autostart.as_str() {
-                            "yes" => Ok(true),
-                            "no" => Ok(false),
-                            _ => Err(snafu::NoneError),
-                        }
-                    })
-                    .with_context(|_| {
-                        InvalidBooleanSnafu {
-                            key: "autostart".to_string(),
-                        }
-                    })?;
                 let user = values.remove("user");
                 let group = values.remove("group");
                 let notify = values
@@ -135,7 +121,6 @@ impl SectionBuilder for ScriptBuilder {
                     timeout_kill,
                     max_deaths,
                     down_signal,
-                    autostart,
                     user,
                     group,
                     notify,
@@ -156,7 +141,6 @@ impl SectionBuilder for ScriptBuilder {
             "timeout_kill",
             "max_deaths",
             "down_signal",
-            "autostart",
             "user",
             "group",
             "notify",

@@ -66,11 +66,6 @@ pub struct Script {
         skip_serializing_if = "Script::is_default_down_signal"
     )]
     pub down_signal: i32,
-    #[serde(
-        default = "Script::default_autostart",
-        skip_serializing_if = "Script::is_default_autostart"
-    )]
-    pub autostart: bool,
     pub user: Option<String>,
     pub group: Option<String>,
     pub notify: Option<u8>,
@@ -114,14 +109,6 @@ impl Script {
         *signal == Self::DEFAULT_DOWN_SIGNAL
     }
 
-    const fn default_autostart() -> bool {
-        true
-    }
-
-    fn is_default_autostart(autostart: &bool) -> bool {
-        *autostart
-    }
-
     // This function always set the default values instead of leaving None
     // Use it everywhere the script will be read and executed
     pub fn new(
@@ -136,7 +123,6 @@ impl Script {
             timeout_kill: Self::default_timeout_kill(),
             max_deaths: Self::default_max_deaths(),
             down_signal: Self::default_down_signal(),
-            autostart: Self::default_autostart(),
             user: None,
             group: None,
             notify: None,
