@@ -42,19 +42,19 @@ pub enum LiveGraphError {
 
 #[derive(Error, Debug)]
 pub enum SystemError {
-    #[error("error reading dependency graph from disk")]
+    #[error("error reading dependency graph from disk: {source}")]
     ReadGraphError { source: io::Error },
-    #[error("error deserializing json")]
+    #[error("error deserializing json: {source}")]
     JsonDeserializeError { source: serde_json::Error },
-    #[error("error when joining tasks")]
+    #[error("error when joining tasks: {source}")]
     JoinError { source: tokio::task::JoinError },
-    #[error("error when creating a pidfd")]
+    #[error("error when creating a pidfd: {source}")]
     PidFdError { source: io::Error },
-    #[error("error when sending a signal through")]
+    #[error("error when sending a signal through: {source}")]
     PidFdSendSignalError { source: io::Error },
-    #[error("error when waiting on a pidfd")]
+    #[error("error when waiting on a pidfd: {source}")]
     PidFdWaitError { source: io::Error },
-    #[error("error when spawning the supervisor")]
+    #[error("error when spawning the supervisor: {source}")]
     SpawnError { source: io::Error },
 }
 
