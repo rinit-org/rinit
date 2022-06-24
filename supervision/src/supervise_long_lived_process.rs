@@ -84,9 +84,7 @@ where
 }
 
 pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
-    let mut longrun: Longrun = serde_json::from_str(service)?;
-    longrun.run.set_defaults();
-    longrun.finish.as_mut().map(|stop| stop.set_defaults());
+    let longrun: Longrun = serde_json::from_str(service)?;
     let mut conn = AsyncConnection::new_host_address().await?;
     let mut time_tried = 0;
     loop {
@@ -160,7 +158,6 @@ mod test {
     async fn test_start_process() {
         // sleep for 100ms
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.01".to_string());
-        script.set_defaults();
         // wait for 1ms
         script.timeout = Some(1);
         assert!(matches!(
@@ -172,7 +169,6 @@ mod test {
     #[tokio::test]
     async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
-        script.set_defaults();
         script.timeout = Some(5);
         assert!(matches!(
             start_process(&script, wait!(1000)).await.unwrap(),
@@ -183,7 +179,6 @@ mod test {
     #[tokio::test]
     async fn test_supervise() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
-        script.set_defaults();
         script.timeout = Some(1);
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
@@ -198,7 +193,6 @@ mod test {
     #[tokio::test]
     async fn test_supervise_signal() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 1".to_string());
-        script.set_defaults();
         script.timeout = Some(1);
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));

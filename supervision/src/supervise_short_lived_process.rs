@@ -17,10 +17,8 @@ pub async fn supervise_short_lived_process(
         "stop" => false,
         _ => todo!(),
     };
-    let mut oneshot: Oneshot = serde_json::from_str(service)?;
+    let oneshot: Oneshot = serde_json::from_str(service)?;
     let mut conn = AsyncConnection::new_host_address().await?;
-    oneshot.start.set_defaults();
-    oneshot.stop.as_mut().map(|stop| stop.set_defaults());
     let request = Request::ServiceIsUp(
         if start {
             run_short_lived_script(&oneshot.start, signal_wait_fun()).await?

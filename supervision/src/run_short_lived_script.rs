@@ -115,22 +115,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_script_success() {
-        let mut script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
-        script.set_defaults();
+        let script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
         assert!(run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_failure() {
-        let mut script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
-        script.set_defaults();
+        let script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_run_script_timeout() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 15".to_string());
-        script.set_defaults();
         script.timeout = Some(10);
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
@@ -138,7 +135,6 @@ mod tests {
     #[tokio::test]
     async fn test_run_script_force_kill() {
         let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
-        script.set_defaults();
         script.timeout = Some(10);
         script.timeout_kill = Some(10);
         script.down_signal = Some(0);
@@ -149,7 +145,6 @@ mod tests {
     #[tokio::test]
     async fn test_run_script_signal_received() {
         let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
-        script.set_defaults();
         script.timeout = Some(100000);
         assert!(!run_short_lived_script(&script, wait!(0)).await.unwrap());
     }
