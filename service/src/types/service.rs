@@ -36,8 +36,8 @@ impl Service {
     pub fn should_start(&self) -> bool {
         match &self {
             Service::Bundle(_) => false,
-            Service::Longrun(longrun) => longrun.options.auto_start,
-            Service::Oneshot(oneshot) => oneshot.options.auto_start,
+            Service::Longrun(longrun) => longrun.options.autostart,
+            Service::Oneshot(oneshot) => oneshot.options.autostart,
             Service::Virtual(_) => false,
         }
     }

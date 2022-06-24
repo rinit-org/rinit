@@ -1,12 +1,18 @@
 use std::collections::HashMap;
 
 use rinit_service::types::ServiceOptions;
-use snafu::Snafu;
+use snafu::{
+    ResultExt,
+    Snafu,
+};
 
 use super::SectionBuilder;
 
 #[derive(Snafu, Debug)]
-pub struct ServiceOptionsBuilderError {}
+pub enum ServiceOptionsBuilderError {
+    #[snafu(display("{} must be either 'yes' or 'no'", key))]
+    InvalidBoolean { key: String },
+}
 
 pub struct ServiceOptionsBuilder {
     pub options: Option<Result<ServiceOptions, ServiceOptionsBuilderError>>,
@@ -31,14 +37,27 @@ impl SectionBuilder for ServiceOptionsBuilder {
         let requires = array_values.remove("requires").unwrap_or_default();
         let requires_one = array_values.remove("requires-one").unwrap_or_default();
         // TODO: return error when auto-start is != yes and != no
-        let auto_start = values
-            .remove("auto-start")
-            .map_or(true, |value| value != "no");
-        self.options = Some(Ok(ServiceOptions {
-            dependencies,
-            requires,
-            requires_one,
-            auto_start,
+        let autostart = values
+            .remove("autostart")
+            .map_or(Ok(true), |autostart| {
+                match autostart.as_str() {
+                    "yes" => Ok(true),
+                    "no" => Ok(false),
+                    _ => Err(snafu::NoneError),
+                }
+            })
+            .with_context(|_| {
+                InvalidBooleanSnafu {
+                    key: "autostart".to_string(),
+                }
+            });
+        self.options = Some(autostart.map(|autostart| -> ServiceOptions {
+            ServiceOptions {
+                dependencies,
+                requires,
+                requires_one,
+                autostart,
+            }
         }));
     }
 
