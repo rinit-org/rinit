@@ -13,7 +13,11 @@ pub mod supervise_short_lived_process;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
 pub use pidfd_send_signal::pidfd_send_signal;
-use rinit_ipc::Request;
+use rinit_ipc::{
+    request_error::RequestError,
+    Reply,
+    Request,
+};
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
@@ -108,6 +112,9 @@ pub async fn service_control(config: Config) -> Result<()> {
                     async move {
                         let mut conn = AsyncConnection::new_host_address().await.unwrap();
                         conn.send_request(Request::StartAllServices).await.unwrap();
+                        let reply: Result<Reply, RequestError> =
+                            serde_json::from_str(&conn.recv().await.unwrap()).unwrap();
+                        reply.unwrap();
                     },
                 )
             });

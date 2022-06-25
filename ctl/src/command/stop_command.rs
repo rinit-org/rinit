@@ -1,10 +1,10 @@
 use anyhow::{
-    bail,
     ensure,
     Result,
 };
 use clap::Parser;
 use rinit_ipc::{
+    request_error::RequestError,
     Connection,
     Reply,
     Request,
@@ -28,18 +28,33 @@ impl StopCommand {
             "duplicated service found"
         );
 
-        let request = Request::StopServices(self.services);
         let mut conn = Connection::new_host_address()?;
-        conn.send_request(request)?;
-        let reply: Reply = serde_json::from_str(&conn.recv()?).unwrap();
-        let res = if let Reply::Result(res) = reply {
-            res
-        } else {
-            unreachable!()
-        };
-        if let Some(err) = res {
-            bail!("{err}");
-        }
+        self.services
+            .into_iter()
+            .try_for_each(|service| -> Result<()> {
+                let request = Request::StopService(service.clone());
+                conn.send_request(request)?;
+
+                let res: Result<Reply, RequestError> = serde_json::from_str(&conn.recv()?).unwrap();
+                match res {
+                    Ok(reply) => {
+                        match reply {
+                            Reply::Success(success) => {
+                                if success {
+                                    println!("Service {service} stopped successfully.");
+                                } else {
+                                    println!("Service {service} failed to stop.");
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("{err}");
+                    }
+                }
+                Ok(())
+            })?;
 
         Ok(())
     }

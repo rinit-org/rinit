@@ -706,6 +706,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "thiserror",
 ]
 
 [[package]]

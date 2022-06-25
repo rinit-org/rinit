@@ -9,6 +9,10 @@ use std::{
 use async_pidfd::PidFd;
 use async_recursion::async_recursion;
 use async_scoped_local::TokioScope;
+use rinit_ipc::request_error::{
+    LogicError,
+    RequestError,
+};
 use rinit_service::{
     config::Config,
     graph::DependencyGraph,
@@ -33,14 +37,6 @@ pub struct LiveServiceGraph {
 }
 
 #[derive(Error, Debug)]
-pub enum LiveGraphError {
-    #[error("{}", .0)]
-    SystemError(SystemError),
-    #[error("{}", .0)]
-    LogicError(LogicError),
-}
-
-#[derive(Error, Debug)]
 pub enum SystemError {
     #[error("error reading dependency graph from disk: {source}")]
     ReadGraphError { source: io::Error },
@@ -59,16 +55,20 @@ pub enum SystemError {
 }
 
 #[derive(Error, Debug)]
-pub enum LogicError {
-    #[error("dependency {dependency} failed to start for service {service}")]
-    DependencyFailedToStart { service: String, dependency: String },
-    #[error("service {service} dependendents {dependents:?} are still running")]
-    DependentsStillRunning {
-        service: String,
-        dependents: Vec<String>,
-    },
-    #[error("service {service} failed to start")]
-    ServiceFailedToStart { service: String },
+pub enum LiveGraphError {
+    #[error("{}", .0)]
+    SystemError(SystemError),
+    #[error("{}", .0)]
+    LogicError(LogicError),
+}
+
+impl From<LiveGraphError> for RequestError {
+    fn from(e: LiveGraphError) -> Self {
+        match e {
+            LiveGraphError::SystemError(err) => RequestError::SystemError(format!("{err}")),
+            LiveGraphError::LogicError(err) => RequestError::LogicError(err),
+        }
+    }
 }
 
 type Result<T> = std::result::Result<T, LiveGraphError>;
@@ -238,7 +238,7 @@ impl LiveServiceGraph {
         live_service: &LiveService,
     ) -> Result<()> {
         for dep in live_service.node.service.dependencies() {
-            let dep_service = self.get_service(dep);
+            let dep_service = self._get_service(dep);
             let state = dep_service.get_final_state().await;
             if state != ServiceState::Up {
                 return Err(LiveGraphError::LogicError(
@@ -322,6 +322,19 @@ impl LiveServiceGraph {
     }
 
     pub fn get_service(
+        &self,
+        name: &str,
+    ) -> Result<&LiveService> {
+        if self.indexes.contains_key(name) {
+            Ok(self._get_service(name))
+        } else {
+            Err(LiveGraphError::LogicError(LogicError::ServiceNotFound {
+                service: name.to_string(),
+            }))
+        }
+    }
+
+    fn _get_service(
         &self,
         name: &str,
     ) -> &LiveService {

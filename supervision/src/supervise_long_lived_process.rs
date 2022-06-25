@@ -10,7 +10,11 @@ use anyhow::{
     Result,
 };
 use async_pidfd::PidFd;
-use rinit_ipc::Request;
+use rinit_ipc::{
+    request_error::RequestError,
+    Reply,
+    Request,
+};
 use rinit_service::types::{
     Longrun,
     Script,
@@ -102,7 +106,7 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
             }
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
-                let request = Request::ServiceIsUp(true, longrun.name.clone());
+                let request = Request::ServiceIsUp(longrun.name.clone(), true);
                 // TODO: log this
                 conn.send_request(request).await?;
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
@@ -124,11 +128,13 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
         }
     }
 
-    let request = Request::ServiceIsUp(false, longrun.name.clone());
+    let request = Request::ServiceIsUp(longrun.name.clone(), false);
     // TODO: log this
     conn.send_request(request)
         .await
         .context("unable to notify svc")?;
+    let reply: Result<Reply, RequestError> = serde_json::from_str(&conn.recv().await?)?;
+    reply?;
 
     Ok(())
 }

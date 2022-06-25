@@ -48,7 +48,7 @@ impl AsyncConnection {
         self.send(&serde_json::to_vec(&request).unwrap()).await
     }
 
-    pub async fn _recv(&mut self) -> Result<String, Error> {
+    pub async fn recv(&mut self) -> Result<String, Error> {
         let mut s = String::new();
         self.stream
             .read_to_string(&mut s)

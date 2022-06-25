@@ -7,6 +7,7 @@ use serde::{
 #[derive(Serialize, Deserialize)]
 pub enum Reply {
     ServicesStates(Vec<(String, ServiceState)>),
-    Result(Option<String>),
+    ServiceState(String, ServiceState),
+    Success(bool),
     Empty,
 }

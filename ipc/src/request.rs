@@ -6,10 +6,11 @@ use serde::{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
-    ServiceIsUp(bool, String),
-    ServicesStatus(Vec<String>),
-    StartServices(Vec<String>),
-    StopServices(Vec<String>),
+    ServiceIsUp(String, bool),
+    ServicesStatus(),
+    ServiceStatus(String),
+    StartService(String),
+    StopService(String),
     StartAllServices,
     StopAllServices,
 }
