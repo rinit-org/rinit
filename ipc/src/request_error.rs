@@ -2,27 +2,28 @@ use serde::{
     Deserialize,
     Serialize,
 };
-use thiserror::Error;
+use snafu::Snafu;
 
-#[derive(Error, Debug, Serialize, Deserialize)]
+#[derive(Snafu, Debug, Serialize, Deserialize)]
 pub enum RequestError {
-    #[error("{}", .0)]
-    SystemError(String),
-    #[error("{}", .0)]
-    LogicError(LogicError),
+    #[snafu(display("{err}"))]
+    SystemError { err: String },
+    #[snafu(display("{err}"))]
+    LogicError { err: LogicError },
 }
 
-#[derive(Error, Debug, Serialize, Deserialize)]
+#[derive(Snafu, Debug, Serialize, Deserialize)]
+#[snafu(visibility(pub))]
 pub enum LogicError {
-    #[error("dependency {dependency} failed to start for service {service}")]
+    #[snafu(display("dependency {dependency} failed to start for service {service}"))]
     DependencyFailedToStart { service: String, dependency: String },
-    #[error("service {service} dependendents {dependents:?} are still running")]
+    #[snafu(display("service {service} dependendents {dependents:?} are still running"))]
     DependentsStillRunning {
         service: String,
         dependents: Vec<String>,
     },
-    #[error("service {service} failed to start")]
+    #[snafu(display("service {service} failed to start"))]
     ServiceFailedToStart { service: String },
-    #[error("service {service} does not exists")]
+    #[snafu(display("service {service} does not exists"))]
     ServiceNotFound { service: String },
 }
