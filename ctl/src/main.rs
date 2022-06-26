@@ -1,3 +1,5 @@
+#![feature(async_closure)]
+
 mod command;
 
 use anyhow::Result;
@@ -25,16 +27,18 @@ use command::{
 };
 use rinit_service::config::Config;
 
-fn main() -> Result<()> {
+// This has to be async just for AsyncConnection
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
     let opts = Opts::parse();
     let config = Config::new(None)?;
 
     match opts.subcmd {
-        Command::Enable(enable_command) => enable_command.run(config)?,
-        Command::Disable(disable_command) => disable_command.run(config)?,
-        Command::Status(status_command) => status_command.run(config)?,
-        Command::Start(start_command) => start_command.run(config)?,
-        Command::Stop(stop_command) => stop_command.run(config)?,
+        Command::Enable(enable_command) => enable_command.run(config).await?,
+        Command::Disable(disable_command) => disable_command.run(config).await?,
+        Command::Status(status_command) => status_command.run(config).await?,
+        Command::Start(start_command) => start_command.run(config).await?,
+        Command::Stop(stop_command) => stop_command.run(config).await?,
     }
 
     Ok(())

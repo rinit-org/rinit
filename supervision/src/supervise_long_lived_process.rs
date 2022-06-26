@@ -11,8 +11,7 @@ use anyhow::{
 };
 use async_pidfd::PidFd;
 use rinit_ipc::{
-    request_error::RequestError,
-    Reply,
+    AsyncConnection,
     Request,
 };
 use rinit_service::types::{
@@ -27,7 +26,6 @@ use tokio::{
 };
 
 use crate::{
-    async_connection::AsyncConnection,
     exec_script,
     kill_process,
     run_short_lived_script,
@@ -107,8 +105,8 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
             ScriptResult::Running(pidfd) => {
                 time_tried = 0;
                 let request = Request::ServiceIsUp(longrun.name.clone(), true);
-                // TODO: log this
-                conn.send_request(request).await?;
+                // TODO: handle this
+                conn.send_request(request).await??;
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
                 match res {
                     ScriptResult::Exited(_) => {}
@@ -130,11 +128,11 @@ pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
 
     let request = Request::ServiceIsUp(longrun.name.clone(), false);
     // TODO: log this
-    conn.send_request(request)
+    let _ = conn
+        .send_request(request)
         .await
-        .context("unable to notify svc")?;
-    let reply: Result<Reply, RequestError> = serde_json::from_str(&conn.recv().await?)?;
-    reply?;
+        .context("error while communicating with svc")?
+        .context("the request failed")?;
 
     Ok(())
 }

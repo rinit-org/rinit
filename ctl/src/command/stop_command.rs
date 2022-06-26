@@ -1,11 +1,16 @@
+use std::{
+    cell::RefCell,
+    rc::Rc,
+};
+
 use anyhow::{
     ensure,
     Result,
 };
 use clap::Parser;
+use futures::stream::StreamExt;
 use rinit_ipc::{
-    request_error::RequestError,
-    Connection,
+    AsyncConnection,
     Reply,
     Request,
 };
@@ -18,7 +23,7 @@ pub struct StopCommand {
 }
 
 impl StopCommand {
-    pub fn run(
+    pub async fn run(
         self,
         _config: Config,
     ) -> Result<()> {
@@ -28,33 +33,39 @@ impl StopCommand {
             "duplicated service found"
         );
 
-        let mut conn = Connection::new_host_address()?;
-        self.services
-            .into_iter()
-            .try_for_each(|service| -> Result<()> {
-                let request = Request::StopService(service.clone());
-                conn.send_request(request)?;
+        let conn = Rc::new(RefCell::new(AsyncConnection::new_host_address().await?));
+        let success = futures::stream::iter(
+            self.services
+                .into_iter()
+                .map(|service| (service, conn.clone())),
+        )
+        .map(async move |(service, conn)| -> Result<()> {
+            let request = Request::StopService(service.clone());
+            let res = conn.borrow_mut().send_request(request).await?;
 
-                let res: Result<Reply, RequestError> = serde_json::from_str(&conn.recv()?).unwrap();
-                match res {
-                    Ok(reply) => {
-                        match reply {
-                            Reply::Success(success) => {
-                                if success {
-                                    println!("Service {service} stopped successfully.");
-                                } else {
-                                    println!("Service {service} failed to stop.");
-                                }
+            match res {
+                Ok(reply) => {
+                    match reply {
+                        Reply::Success(success) => {
+                            if success {
+                                println!("Service {service} stopped successfully.");
+                            } else {
+                                println!("Service {service} failed to stop.");
                             }
-                            _ => unreachable!(),
                         }
-                    }
-                    Err(err) => {
-                        eprintln!("{err}");
+                        _ => unreachable!(),
                     }
                 }
-                Ok(())
-            })?;
+                Err(err) => {
+                    eprintln!("{err}");
+                }
+            }
+            Ok(())
+        })
+        .any(async move |res| res.await.is_err())
+        .await;
+
+        ensure!(success, "");
 
         Ok(())
     }

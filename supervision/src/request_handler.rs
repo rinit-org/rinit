@@ -1,20 +1,19 @@
-use std::io;
-
 use futures::{
     prelude::*,
     stream::StreamExt,
 };
+use remoc::rch;
 use rinit_ipc::{
     request_error::RequestError,
+    ConnectionError as ConnectionErrorGeneric,
     Reply,
     Request,
 };
 use rinit_service::service_state::ServiceState;
 use tokio::{
-    io::AsyncWriteExt,
     net::UnixStream,
+    task,
 };
-use tracing::trace;
 
 use crate::{
     live_service::LiveService,
@@ -23,6 +22,8 @@ use crate::{
         LiveServiceGraph,
     },
 };
+
+type ConnectionError = ConnectionErrorGeneric<Result<Reply, RequestError>>;
 
 pub struct RequestHandler {
     graph: LiveServiceGraph,
@@ -35,15 +36,42 @@ impl RequestHandler {
 
     pub async fn handle_stream(
         &self,
-        mut stream: UnixStream,
-    ) {
+        stream: UnixStream,
+    ) -> Result<(), ConnectionError> {
+        let (socket_rx, socket_tx) = stream.into_split();
+        let (conn, mut tx, mut rx): (
+            _,
+            rch::base::Sender<Result<Reply, RequestError>>,
+            rch::base::Receiver<Request>,
+        ) = remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await?;
+        // This has to be spawned in a different task, otherwise everything blocks
+        task::spawn_local(conn);
         loop {
-            let buf = Self::read(&stream).await;
-            let request: Request = serde_json::from_slice(&buf).unwrap();
-            trace!("Received request from socket: {request:?}");
+            let request = match rx.recv().await {
+                Ok(val) => {
+                    match val {
+                        Some(req) => req,
+                        // No new requests
+                        None => break,
+                    }
+                }
+                Err(err) => {
+                    match err {
+                        // The connection terminated, break out of the loop
+                        rch::base::RecvError::Receive(err) if err.is_terminated() => break,
+                        rch::base::RecvError::Receive(_)
+                        | rch::base::RecvError::Deserialize(_)
+                        | rch::base::RecvError::MissingPorts(_) => {
+                            return Err(ConnectionError::ReceiveError { source: err });
+                        }
+                    }
+                }
+            };
             let reply = self.handle(request).await;
-            self.write_stream(&mut stream, reply).await;
+            tx.send(reply).await?;
         }
+
+        Ok(())
     }
 
     pub async fn handle<'a>(
@@ -113,42 +141,5 @@ impl RequestHandler {
                 Reply::Empty
             }
         })
-    }
-
-    async fn read(stream: &UnixStream) -> Vec<u8> {
-        let mut res = Vec::new();
-        loop {
-            stream.readable().await.unwrap();
-
-            let mut buf = [0; 1024];
-            match stream.try_read(&mut buf) {
-                Ok(size) if size == 0 => break,
-                Ok(_) => {
-                    let index = buf.iter().position(|&c| c == 10);
-                    res.extend_from_slice(&buf[..index.unwrap_or(buf.len())]);
-                    if index.is_some() {
-                        break;
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => {
-                    todo!()
-                }
-            }
-        }
-
-        res
-    }
-
-    pub async fn write_stream(
-        &self,
-        stream: &mut UnixStream,
-        reply: Result<Reply, RequestError>,
-    ) {
-        stream
-            .write_all(&serde_json::to_vec(&reply).unwrap())
-            .await
-            .unwrap();
-        stream.write_all("\n".as_bytes()).await.unwrap();
     }
 }

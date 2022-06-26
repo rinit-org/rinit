@@ -4,7 +4,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Reply {
     ServicesStates(Vec<(String, ServiceState)>),
     ServiceState(String, ServiceState),

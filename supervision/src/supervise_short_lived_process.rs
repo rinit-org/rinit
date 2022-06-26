@@ -1,13 +1,14 @@
-use anyhow::Result;
+use anyhow::{
+    Context,
+    Result,
+};
 use rinit_ipc::{
-    request_error::RequestError,
-    Reply,
+    AsyncConnection,
     Request,
 };
 use rinit_service::types::Oneshot;
 
 use crate::{
-    async_connection::AsyncConnection,
     run_short_lived_script,
     signal_wait::signal_wait_fun,
 };
@@ -36,9 +37,11 @@ pub async fn supervise_short_lived_process(
     );
 
     // TODO: log this
-    conn.send_request(request).await.unwrap();
-    let reply: Result<Reply, RequestError> = serde_json::from_str(&conn.recv().await?)?;
-    reply?;
+    let _ = conn
+        .send_request(request)
+        .await
+        .context("error while communicating with svc")?
+        .context("the request failed")?;
 
     Ok(())
 }

@@ -16,6 +16,7 @@ futures = "0.3.21"
 lazy_static = "1.4.0"
 libc = "0.2.126"
 nix = "0.24.1"
+remoc = "0.10.0"
 serde_json = "1.0.81"
 snafu = "0.7.1"
 tokio = { version = "1.19.2", features = [ "full" ] }

@@ -20,7 +20,7 @@ pub struct EnableCommand {
 }
 
 impl EnableCommand {
-    pub fn run(
+    pub async fn run(
         self,
         config: Config,
     ) -> Result<()> {

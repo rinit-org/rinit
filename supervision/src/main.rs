@@ -1,7 +1,6 @@
 #![feature(async_closure)]
 #![feature(let_chains)]
 
-mod async_connection;
 pub mod exec_script;
 pub mod kill_process;
 pub mod pidfd_send_signal;
@@ -13,16 +12,15 @@ pub mod supervise_short_lived_process;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
 pub use pidfd_send_signal::pidfd_send_signal;
-use rinit_ipc::{
-    request_error::RequestError,
-    Reply,
-    Request,
-};
+use rinit_ipc::Request;
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
-use tracing::info;
+use tracing::{
+    error,
+    info,
+};
 pub mod live_service;
 pub mod live_service_graph;
 pub mod request_handler;
@@ -49,7 +47,6 @@ use request_handler::RequestHandler;
 use rinit_service::config::Config;
 use tokio::{
     fs,
-    join,
     net::UnixListener,
     select,
     task::{
@@ -57,8 +54,6 @@ use tokio::{
         JoinError,
     },
 };
-
-use crate::async_connection::AsyncConnection;
 
 #[macro_use]
 extern crate lazy_static;
@@ -101,25 +96,13 @@ pub async fn service_control(config: Config) -> Result<()> {
             let listener = Rc::new(UnixListener::bind(rinit_ipc::get_host_address()).unwrap());
             let handler = Rc::new(RequestHandler::new(live_graph));
 
-            let listener_clone = listener.clone();
             let handler_clone = handler.clone();
-            task::spawn_local(async move {
-                join!(
-                    async move {
-                        let (stream, _addr) = listener_clone.accept().await.unwrap();
-                        handler_clone.handle_stream(stream).await;
-                    },
-                    async move {
-                        let mut conn = AsyncConnection::new_host_address().await.unwrap();
-                        conn.send_request(Request::StartAllServices).await.unwrap();
-                        let reply: Result<Reply, RequestError> =
-                            serde_json::from_str(&conn.recv().await.unwrap()).unwrap();
-                        reply.unwrap();
-                    },
-                )
-            });
+            let mut handles = vec![task::spawn_local(async move {
+                if let Err(err) = handler_clone.handle(Request::StartAllServices).await {
+                    error!("{err}");
+                }
+            })];
 
-            let mut handles = Vec::new();
             loop {
                 select! {
                     // put signal_wait first because we want to stop as soon as
@@ -134,10 +117,18 @@ pub async fn service_control(config: Config) -> Result<()> {
                     }
                     // this is cancel safe
                     conn = listener.accept() => {
-                        let (stream, _addr) = conn.unwrap();
+                        let stream = match conn {
+                            Ok((stream, _addr)) => stream,
+                            Err(err) => {
+                                error!("error while accepting a new connection: {err}");
+                                return;
+                            },
+                        };
                         let handler = handler.clone();
                         handles.push(task::spawn_local(async move {
-                            handler.handle_stream(stream).await;
+                            if let Err(err) = handler.handle_stream(stream).await {
+                                error!("{err}");
+                            }
                         }));
                     }
                 }

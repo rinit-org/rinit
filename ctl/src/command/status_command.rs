@@ -1,14 +1,20 @@
+use std::{
+    cell::RefCell,
+    rc::Rc,
+};
+
 use anyhow::{
     ensure,
     Result,
 };
 use clap::Parser;
+use futures::stream::StreamExt;
 use itertools::Itertools;
 use rinit_ipc::{
-    request_error::RequestError,
-    Connection,
+    AsyncConnection,
     Reply,
     Request,
+    RequestError,
 };
 
 use crate::Config;
@@ -19,7 +25,7 @@ pub struct StatusCommand {
 }
 
 impl StatusCommand {
-    pub fn run(
+    pub async fn run(
         self,
         _config: Config,
     ) -> Result<()> {
@@ -29,12 +35,10 @@ impl StatusCommand {
             "duplicated service found"
         );
 
-        let mut conn = Connection::new_host_address()?;
+        let conn = Rc::new(RefCell::new(AsyncConnection::new_host_address().await?));
         let states = if self.services.is_empty() {
             let request = Request::ServicesStatus();
-            conn.send_request(request).unwrap();
-            let res: Result<Reply, RequestError> =
-                serde_json::from_str(&conn.recv().unwrap()).unwrap();
+            let res: Result<Reply, RequestError> = conn.borrow_mut().send_request(request).await?;
             match res {
                 Ok(reply) => {
                     match reply {
@@ -48,29 +52,37 @@ impl StatusCommand {
                 }
             }
         } else {
-            self.services
-                .into_iter()
-                .filter_map(|service| {
-                    let request = Request::ServiceStatus(service);
-                    conn.send_request(request).unwrap();
-
-                    let res: Result<Reply, RequestError> =
-                        serde_json::from_str(&conn.recv().unwrap()).unwrap();
-                    match res {
-                        Ok(reply) => Some(reply),
-                        Err(err) => {
-                            eprintln!("{err}");
-                            None
+            futures::stream::iter(
+                self.services
+                    .into_iter()
+                    .map(|service| (service, conn.clone())),
+            )
+            .filter_map(async move |(service, conn)| {
+                let request = Request::ServiceStatus(service);
+                match conn.borrow_mut().send_request(request).await {
+                    Ok(res) => {
+                        match res {
+                            Ok(reply) => Some(reply),
+                            Err(err) => {
+                                eprintln!("{err}");
+                                None
+                            }
                         }
                     }
-                })
-                .map(|reply| {
-                    match reply {
-                        Reply::ServiceState(service, state) => (service, state),
-                        _ => unreachable!(),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        None
                     }
-                })
-                .collect()
+                }
+            })
+            .map(|reply| {
+                match reply {
+                    Reply::ServiceState(service, state) => (service, state),
+                    _ => unreachable!(),
+                }
+            })
+            .collect()
+            .await
         };
         states
             .iter()
