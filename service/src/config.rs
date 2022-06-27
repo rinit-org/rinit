@@ -29,6 +29,7 @@ pub struct Config {
     pub rundir: Option<PathBuf>,
     pub datadir: Option<PathBuf>,
     pub service_directories: Vec<PathBuf>,
+    pub logdir: Option<PathBuf>,
     pub profile_name: Option<String>,
     #[serde(skip)]
     pub system: bool,
@@ -71,6 +72,9 @@ impl Config {
         }
         if config.datadir.is_some() {
             self.datadir = config.datadir;
+        }
+        if config.logdir.is_some() {
+            self.logdir = config.logdir;
         }
         if !config.service_directories.is_empty() {
             self.service_directories = config.service_directories;
@@ -167,6 +171,7 @@ impl Config {
                 PathBuf::from("/etc/rinit/service"),
                 PathBuf::from("/usr/share/rinit/service"),
             ],
+            logdir: Some(PathBuf::from("/var/log/rinit")),
             profile_name: None,
             system: true,
         }
@@ -177,17 +182,18 @@ impl Config {
             path: Some(PathBuf::from(
                 env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string()),
             )),
-            configdir: { Some(xdg.get_config_home()) },
+            configdir: Some(xdg.get_config_home()),
             rundir: Some(
                 xdg.get_runtime_directory()
                     .context(BaseDirectoriesSnafu {})?
                     .join("rinit"),
             ),
-            datadir: { Some(xdg.get_data_home()) },
+            datadir: Some(xdg.get_data_home()),
             service_directories: vec![
                 PathBuf::from(DEFAULT_CONFIG_PLACEHOLDER),
                 PathBuf::from("/usr/share/rinit/service"),
             ],
+            logdir: Some(xdg.get_state_home()),
             profile_name: None,
             system: false,
         })

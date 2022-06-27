@@ -80,7 +80,28 @@ fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
 }
 
 pub async fn service_control(config: Config) -> Result<()> {
-    install_tracing();
+    use tracing_error::ErrorLayer;
+    use tracing_subscriber::{
+        fmt,
+        prelude::*,
+        EnvFilter,
+    };
+
+    let file_appender =
+        tracing_appender::rolling::daily(config.logdir.as_ref().unwrap(), "rinit.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let fmt_layer = fmt::layer().with_target(false);
+    let file_fmt_layer = fmt::layer().with_target(false).with_writer(non_blocking);
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .with(file_fmt_layer)
+        .with(ErrorLayer::default())
+        .init();
 
     let local = task::LocalSet::new();
     let live_graph = LiveServiceGraph::new(config)?;
@@ -141,26 +162,6 @@ pub async fn service_control(config: Config) -> Result<()> {
         .unwrap();
 
     Ok(())
-}
-
-fn install_tracing() {
-    use tracing_error::ErrorLayer;
-    use tracing_subscriber::{
-        fmt,
-        prelude::*,
-        EnvFilter,
-    };
-
-    let fmt_layer = fmt::layer().with_target(false);
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(fmt_layer)
-        .with(ErrorLayer::default())
-        .init();
 }
 
 #[tokio::main(flavor = "current_thread")]
