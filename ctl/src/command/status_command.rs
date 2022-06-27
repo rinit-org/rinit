@@ -35,10 +35,10 @@ impl StatusCommand {
             "duplicated service found"
         );
 
-        let conn = Rc::new(RefCell::new(AsyncConnection::new_host_address().await?));
         let states = if self.services.is_empty() {
+            let mut conn = AsyncConnection::new_host_address().await?;
             let request = Request::ServicesStatus();
-            let res: Result<Reply, RequestError> = conn.borrow_mut().send_request(request).await?;
+            let res: Result<Reply, RequestError> = conn.send_request(request).await?;
             match res {
                 Ok(reply) => {
                     match reply {
@@ -52,6 +52,7 @@ impl StatusCommand {
                 }
             }
         } else {
+            let conn = Rc::new(RefCell::new(AsyncConnection::new_host_address().await?));
             futures::stream::iter(
                 self.services
                     .into_iter()
