@@ -58,6 +58,7 @@ impl CodeParser {
             self.is_parsing = false;
         } else {
             self.code.push_str(line);
+            self.code.push('\n');
         }
     }
 }
