@@ -1,5 +1,5 @@
 [package]
-name = "rinit-supervision"
+name = "rinit-svc"
 version = "0.1.0"
 authors = ["Danilo Spinella <oss@danyspin97.org>"]
 edition = "2021"
@@ -27,5 +27,5 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.11", features = [ "env-filter" ] }
 
 [[bin]]
-name = "rsupervision"
+name = "rsvc"
 path = "src/main.rs"

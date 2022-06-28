@@ -15,8 +15,8 @@ use rinit_ipc::{
     Request,
 };
 use rinit_service::types::{
-    Longrun,
     Script,
+    Service,
 };
 use tokio::{
     io::unix::AsyncFd,
@@ -85,8 +85,11 @@ where
     })
 }
 
-pub async fn supervise_long_lived_process(service: &str) -> Result<()> {
-    let longrun: Longrun = serde_json::from_str(service)?;
+pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
+    let longrun = match service {
+        Service::Longrun(longrun) => longrun,
+        _ => unreachable!(),
+    };
     let mut conn = AsyncConnection::new_host_address().await?;
     let mut time_tried = 0;
     loop {

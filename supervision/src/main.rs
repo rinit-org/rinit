@@ -9,77 +9,87 @@ pub mod signal_wait;
 pub mod supervise_long_lived_process;
 pub mod supervise_short_lived_process;
 
+use std::path::PathBuf;
+
+use anyhow::Result;
 pub use exec_script::exec_script;
 pub use kill_process::kill_process;
+use lexopt::{
+    prelude::Long,
+    Arg::Value,
+};
 pub use pidfd_send_signal::pidfd_send_signal;
-use rinit_ipc::Request;
+use rinit_service::types::Service;
 pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
 use tracing::{
     error,
-    info,
-};
-pub mod live_service;
-pub mod live_service_graph;
-pub mod request_handler;
-
-use std::{
-    io,
-    path::{
-        Path,
-        PathBuf,
-    },
-    rc::Rc,
-};
-
-use anyhow::{
-    Context,
-    Result,
-};
-use clap::{
-    Parser,
-    Subcommand,
-};
-use live_service_graph::LiveServiceGraph;
-use request_handler::RequestHandler;
-use rinit_service::config::Config;
-use tokio::{
-    fs,
-    net::UnixListener,
-    select,
-    task::{
-        self,
-        JoinError,
-    },
+    metadata::LevelFilter,
 };
 
 #[macro_use]
 extern crate lazy_static;
 
-#[derive(Parser)]
-struct Opts {
-    #[clap(subcommand)]
-    subcmd: Subcmd,
+#[derive(Debug)]
+enum ServiceType {
+    Longrun,
+    Oneshot(String),
 }
 
-#[derive(Subcommand)]
-enum Subcmd {
-    Run { config_path: Option<PathBuf> },
-    Oneshot { phase: String, service: String },
-    Longrun { service: String },
+#[derive(Debug)]
+struct Args {
+    service_type: ServiceType,
+    logdir: PathBuf,
+    service: String,
 }
 
-fn syscall_result(ret: libc::c_long) -> io::Result<libc::c_long> {
-    if ret == -1 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(ret)
+fn parse_args() -> Result<Args, lexopt::Error> {
+    let mut logdir: Option<PathBuf> = None;
+    let mut service_type: Option<ServiceType> = None;
+    let mut service: Option<String> = None;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Long("logdir") => {
+                logdir = Some(PathBuf::from(parser.value()?));
+            }
+            Long("longrun") => {
+                service_type = Some(ServiceType::Longrun);
+                // This value is not used but it's set so
+                // that oneshot and longrun can be spawned with the same syntax
+                parser.value()?;
+            }
+            Long("oneshot") => {
+                service_type = Some(ServiceType::Oneshot(
+                    parser.value()?.to_string_lossy().to_string(),
+                ));
+            }
+            Long("help") => {
+                println!("Usage: rsvc [-c|--config=CONFIG]");
+                std::process::exit(0);
+            }
+            Value(val) if service.is_none() => {
+                service = Some(val.into_string()?);
+            }
+            _ => return Err(arg.unexpected()),
+        }
     }
+
+    Ok(Args {
+        logdir: logdir.expect("logdir is not set"),
+        service_type: service_type.expect("service type is not set"),
+        service: service.expect("the service has not been provided"),
+    })
 }
 
-pub async fn service_control(config: Config) -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    let args = parse_args()?;
+    let service: Service = serde_json::from_str(&args.service)?;
+
+    // Setup logging
     use tracing_error::ErrorLayer;
     use tracing_subscriber::{
         fmt,
@@ -87,98 +97,38 @@ pub async fn service_control(config: Config) -> Result<()> {
         EnvFilter,
     };
 
-    let file_appender =
-        tracing_appender::rolling::daily(config.logdir.as_ref().unwrap(), "rinit.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    let fmt_layer = fmt::layer().with_target(false);
-    let file_fmt_layer = fmt::layer().with_target(false).with_writer(non_blocking);
+    let file_appender = tracing_appender::rolling::daily(
+        args.logdir.join(service.name()),
+        format!("{}.log", service.name()),
+    );
+    let (service_log_writer, _guard) = tracing_appender::non_blocking(file_appender);
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
+    use tracing_subscriber::fmt::format;
+    let stdio_fmt_layer = fmt::layer()
+        .event_format(format())
+        .with_target(false)
+        // Do not write warn and info to stdout, as it's inherited from rsvc
+        .with_filter(LevelFilter::ERROR);
+    let file_fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_level(false)
+        .with_writer(service_log_writer);
 
     tracing_subscriber::registry()
         .with(filter_layer)
-        .with(fmt_layer)
+        .with(stdio_fmt_layer)
         .with(file_fmt_layer)
         .with(ErrorLayer::default())
         .init();
 
-    let local = task::LocalSet::new();
-    let live_graph = LiveServiceGraph::new(config)?;
-
-    // Setup socket listener
-    fs::create_dir_all(Path::new(rinit_ipc::get_host_address()).parent().unwrap())
-        .await
-        .unwrap();
-
-    local
-        .run_until(async move {
-            info!("Starting rinit!");
-            let listener = Rc::new(UnixListener::bind(rinit_ipc::get_host_address()).unwrap());
-            let handler = Rc::new(RequestHandler::new(live_graph));
-
-            let handler_clone = handler.clone();
-            let mut handles = vec![task::spawn_local(async move {
-                if let Err(err) = handler_clone.handle(Request::StartAllServices).await {
-                    error!("{err}");
-                }
-            })];
-
-            loop {
-                select! {
-                    // put signal_wait first because we want to stop as soon as
-                    // we receive a termination signal
-                    // this is cancel safe
-                    _ = signal_wait() => {
-                        for handle in handles {
-                            let res: Result<(), JoinError> = handle.await;
-                            res.unwrap();
-                        }
-                        break;
-                    }
-                    // this is cancel safe
-                    conn = listener.accept() => {
-                        let stream = match conn {
-                            Ok((stream, _addr)) => stream,
-                            Err(err) => {
-                                error!("error while accepting a new connection: {err}");
-                                return;
-                            },
-                        };
-                        let handler = handler.clone();
-                        handles.push(task::spawn_local(async move {
-                            if let Err(err) = handler.handle_stream(stream).await {
-                                error!("{err}");
-                            }
-                        }));
-                    }
-                }
-            }
-        })
-        .await;
-
-    fs::remove_file(rinit_ipc::get_host_address())
-        .await
-        .unwrap();
-
-    Ok(())
-}
-
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    let opts = Opts::parse();
-    match opts.subcmd {
-        Subcmd::Run { config_path } => {
-            service_control(Config::new(config_path).unwrap())
-                .await
-                .context("")?
-        }
-        Subcmd::Oneshot { phase, service } => {
-            supervise_short_lived_process(&phase, &service)
-                .await
-                .context("")?
-        }
-        Subcmd::Longrun { service } => supervise_long_lived_process(&service).await.context("")?,
+    let res = match args.service_type {
+        ServiceType::Longrun => supervise_long_lived_process(service).await,
+        ServiceType::Oneshot(phase) => supervise_short_lived_process(service, &phase).await,
+    };
+    if let Err(err) = res {
+        error!("ERROR ksupervisor {err}")
     }
 
     Ok(())

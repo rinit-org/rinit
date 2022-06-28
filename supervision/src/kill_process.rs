@@ -1,5 +1,10 @@
 use std::{
-    os::unix::prelude::AsRawFd,
+    io,
+    os::unix::prelude::{
+        AsRawFd,
+        RawFd,
+    },
+    ptr,
     time::Duration,
 };
 
@@ -14,7 +19,27 @@ use tokio::{
     time::timeout,
 };
 
-use crate::pidfd_send_signal;
+pub fn pidfd_send_signal(
+    pidfd: RawFd,
+    signal: i32,
+) -> io::Result<()> {
+    unsafe {
+        let ret = libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            pidfd,
+            signal,
+            ptr::null_mut() as *mut libc::c_char,
+            0,
+        );
+        if ret == -1 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(ret)
+        }
+    }?;
+
+    Ok(())
+}
 
 pub async fn kill_process(
     pidfd: &AsyncFd<PidFd>,

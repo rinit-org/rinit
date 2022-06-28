@@ -6,7 +6,7 @@ use rinit_ipc::{
     AsyncConnection,
     Request,
 };
-use rinit_service::types::Oneshot;
+use rinit_service::types::Service;
 
 use crate::{
     run_short_lived_script,
@@ -14,15 +14,18 @@ use crate::{
 };
 
 pub async fn supervise_short_lived_process(
+    service: Service,
     phase: &str,
-    service: &str,
 ) -> Result<()> {
     let start = match phase {
         "start" => true,
         "stop" => false,
         _ => todo!(),
     };
-    let oneshot: Oneshot = serde_json::from_str(service)?;
+    let oneshot = match service {
+        Service::Oneshot(oneshot) => oneshot,
+        _ => unreachable!(),
+    };
     let mut conn = AsyncConnection::new_host_address().await?;
     let request = Request::ServiceIsUp(
         oneshot.name,

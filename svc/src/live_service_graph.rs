@@ -2,8 +2,12 @@ use std::{
     self,
     collections::HashMap,
     io,
-    os::unix::prelude::AsRawFd,
+    os::unix::prelude::{
+        AsRawFd,
+        RawFd,
+    },
     process::Stdio,
+    ptr,
 };
 
 use async_pidfd::PidFd;
@@ -35,14 +39,12 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 
-use crate::{
-    live_service::LiveService,
-    pidfd_send_signal::pidfd_send_signal,
-};
+use crate::live_service::LiveService;
 
 pub struct LiveServiceGraph {
     pub indexes: HashMap<String, usize>,
     pub live_services: Vec<LiveService>,
+    config: Config,
 }
 
 #[derive(Snafu, Debug)]
@@ -86,6 +88,28 @@ impl From<SystemError> for LiveGraphError {
     }
 }
 
+pub fn pidfd_send_signal(
+    pidfd: RawFd,
+    signal: i32,
+) -> io::Result<()> {
+    unsafe {
+        let ret = libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            pidfd,
+            signal,
+            ptr::null_mut() as *mut libc::c_char,
+            0,
+        );
+        if ret == -1 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(ret)
+        }
+    }?;
+
+    Ok(())
+}
+
 impl From<LiveGraphError> for RequestError {
     fn from(e: LiveGraphError) -> Self {
         match e {
@@ -118,6 +142,7 @@ impl LiveServiceGraph {
                 .map(|(i, el)| (el.node.name().to_owned(), i))
                 .collect(),
             live_services: nodes,
+            config,
         })
     }
 
@@ -219,30 +244,35 @@ impl LiveServiceGraph {
     ) -> Result<()> {
         self.wait_on_deps_starting(live_service).await?;
         let res = match &live_service.node.service {
-            Service::Oneshot(oneshot) => Some(("oneshot", serde_json::to_string(&oneshot))),
-            Service::Longrun(longrun) => Some(("longrun", serde_json::to_string(&longrun))),
+            Service::Oneshot(_) => Some("--oneshot=start"),
+            Service::Longrun(_) => Some("--longrun=start"),
             Service::Bundle(_) => None,
             Service::Virtual(_) => None,
         };
-        if let Some((supervise, ser_res)) = res && let Ok(json) = &ser_res {
+        if let Some(supervise) = res {
             // TODO: Add logging and remove unwrap
             let child = loop {
-            let res = Command::new("rsvc")
-                .args(vec![supervise, "start", json])
-                .stdin(Stdio::null())
-                .stdout(Stdio::inherit())
-                .spawn()
-                ;
+                let res = Command::new("rsupervision")
+                    .args(vec![
+                        supervise,
+                        &format!(
+                            "--logdir={}",
+                            self.config.logdir.as_ref().unwrap().to_string_lossy()
+                        ),
+                        &serde_json::to_string(&live_service.node.service).unwrap(),
+                    ])
+                    .stdin(Stdio::null())
+                    .spawn();
                 match res {
                     Ok(child) => break child,
-                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {},
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
                     Err(err) => return Err(SpawnSnafu.into_error(err).into()),
                 }
             };
 
-            live_service.pidfd.replace(Some(AsyncFd::new(
-                PidFd::from_pid(child.id().unwrap() as i32)
-            .unwrap()).unwrap()));
+            live_service.pidfd.replace(Some(
+                AsyncFd::new(PidFd::from_pid(child.id().unwrap() as i32).unwrap()).unwrap(),
+            ));
         }
 
         Ok(())
@@ -281,16 +311,18 @@ impl LiveServiceGraph {
         live_service: &LiveService,
     ) -> Result<()> {
         match &live_service.node.service {
-            Service::Oneshot(oneshot) => {
+            Service::Oneshot(_) => {
                 // TODO: Add logging and remove unwrap
-                Command::new("rsvc")
+                Command::new("rsupervision")
                     .args(vec![
-                        "oneshot",
-                        "stop",
-                        &serde_json::to_string(&oneshot).unwrap(),
+                        "--oneshot=stop",
+                        &format!(
+                            "--logdir={}",
+                            self.config.logdir.as_ref().unwrap().to_string_lossy()
+                        ),
+                        &serde_json::to_string(&live_service.node.service).unwrap(),
                     ])
                     .stdin(Stdio::null())
-                    .stdout(Stdio::inherit())
                     .spawn()
                     .unwrap();
             }
