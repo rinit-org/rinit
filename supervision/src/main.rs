@@ -3,6 +3,7 @@
 
 pub mod exec_script;
 pub mod kill_process;
+pub mod log_stdio;
 pub mod pidfd_send_signal;
 pub mod run_short_lived_script;
 pub mod signal_wait;
@@ -17,6 +18,10 @@ pub use kill_process::kill_process;
 use lexopt::{
     prelude::Long,
     Arg::Value,
+};
+pub use log_stdio::{
+    log_stdio,
+    StdioType,
 };
 pub use pidfd_send_signal::pidfd_send_signal;
 use rinit_service::types::Service;
