@@ -14,13 +14,18 @@ use rinit_service::types::Script;
 use tokio::{
     io::unix::AsyncFd,
     select,
-    task::JoinError,
+    task::{
+        self,
+        JoinError,
+    },
     time::timeout,
 };
 
 use crate::{
     exec_script,
     kill_process,
+    log_stdio,
+    StdioType,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,9 +48,11 @@ where
 
     let mut time_tried = 0;
     let success = loop {
-        let child = exec_script(script)
+        let mut child = exec_script(script)
             .await
             .context("unable to execute script")?;
+        task::spawn(log_stdio(child.stdout.take().unwrap(), StdioType::Stdout));
+        task::spawn(log_stdio(child.stderr.take().unwrap(), StdioType::Stderr));
         let pidfd = AsyncFd::new(
             PidFd::from_pid(child.id().unwrap() as i32)
                 .context("unable to create PidFd from child pid")?,

@@ -1,23 +1,15 @@
+use std::process::Stdio;
+
 use anyhow::{
     Context,
     Result,
 };
-use libc::{
-    self,
-    STDERR_FILENO,
-    STDIN_FILENO,
-    STDOUT_FILENO,
-};
 use nix::{
-    fcntl::OFlag,
     sys::signal::{
         SigSet,
         Signal,
     },
     unistd::{
-        close,
-        dup2,
-        pipe2,
         Group,
         User,
     },
@@ -32,8 +24,6 @@ use tokio::process::{
 };
 
 pub async fn exec_script(script: &Script) -> Result<Child> {
-    let p1 = pipe2(OFlag::O_CLOEXEC).context("unable to create pipe")?;
-    let p2 = pipe2(OFlag::O_CLOEXEC)?;
     let (exe, args) = match &script.prefix {
         ScriptPrefix::Bash => ("bash", vec!["-c", &script.execute]),
         ScriptPrefix::Path => {
@@ -69,27 +59,18 @@ pub async fn exec_script(script: &Script) -> Result<Child> {
                 .as_raw(),
         );
     }
-    let child = unsafe {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    unsafe {
         cmd.pre_exec(move || -> Result<(), std::io::Error> {
-            // Close fds
-            close(STDIN_FILENO)
-                            .and_then(|_| close(STDOUT_FILENO))
-                            .and_then(|_| close(STDERR_FILENO))
-                            // Pipe the stdout and stderr of the program
-                            // into ks-log
-                            .and_then(|_| dup2(p1.0, STDOUT_FILENO).map(|_| ()))
-                            .and_then(|_| dup2(p2.0, STDERR_FILENO).map(|_| ()))
-                            .map_err(|err| err.into())
-        })
-        .pre_exec(move || -> Result<(), std::io::Error> {
             let mut mask = SigSet::empty();
             mask.add(Signal::SIGINT);
             mask.add(Signal::SIGTERM);
             mask.thread_unblock().map_err(|err| err.into())
         })
-    }
-    .spawn()
-    .context("unable to spawn script")?;
+    };
+    let child = cmd.spawn().context("unable to spawn script")?;
 
     Ok(child)
 }
