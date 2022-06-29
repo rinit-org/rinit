@@ -14,6 +14,7 @@ use rinit_service::types::Script;
 use tokio::{
     io::unix::AsyncFd,
     select,
+    sync::oneshot,
     task::{
         self,
         JoinError,
@@ -24,6 +25,7 @@ use tokio::{
 use crate::{
     exec_script,
     kill_process,
+    log_output,
     log_stdio,
     StdioType,
 };
@@ -51,8 +53,12 @@ where
         let mut child = exec_script(script)
             .await
             .context("unable to execute script")?;
-        task::spawn(log_stdio(child.stdout.take().unwrap(), StdioType::Stdout));
-        task::spawn(log_stdio(child.stderr.take().unwrap(), StdioType::Stderr));
+        let (tx, rx) = oneshot::channel();
+        let logger = task::spawn(log_output(
+            child.stdout.take().unwrap(),
+            child.stderr.take().unwrap(),
+            rx,
+        ));
         let pidfd = AsyncFd::new(
             PidFd::from_pid(child.id().unwrap() as i32)
                 .context("unable to create PidFd from child pid")?,
@@ -83,6 +89,14 @@ where
                 kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
             }
         }
+
+        if !tx.is_closed() {
+            // Why do we need to close the pipes manually? The process has either exited
+            // or has been killed, the pipes should have been already closed
+            // Add this as workaround
+            tx.send(()).unwrap();
+        }
+        logger.await??;
 
         time_tried += 1;
         if time_tried == script.max_deaths {
@@ -122,7 +136,7 @@ mod tests {
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_run_script_timeout() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 15".to_string());
         script.timeout = 10;

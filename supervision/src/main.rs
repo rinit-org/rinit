@@ -20,7 +20,7 @@ use lexopt::{
     Arg::Value,
 };
 pub use log_stdio::{
-    log_stdio,
+    log_output,
     StdioType,
 };
 pub use pidfd_send_signal::pidfd_send_signal;

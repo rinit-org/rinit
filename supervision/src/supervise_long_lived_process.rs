@@ -21,9 +21,14 @@ use rinit_service::types::{
 use tokio::{
     io::unix::AsyncFd,
     select,
+    sync::oneshot::{
+        self,
+        Sender,
+    },
     task::{
         self,
         JoinError,
+        JoinHandle,
     },
     time::timeout,
 };
@@ -31,6 +36,7 @@ use tokio::{
 use crate::{
     exec_script,
     kill_process,
+    log_output,
     log_stdio,
     run_short_lived_script,
     signal_wait::signal_wait_fun,
@@ -39,7 +45,11 @@ use crate::{
 
 enum ScriptResult {
     Exited(ExitStatus),
-    Running(AsyncFd<PidFd>),
+    Running(
+        AsyncFd<PidFd>,
+        JoinHandle<Result<(), anyhow::Error>>,
+        Sender<()>,
+    ),
     SignalReceived,
 }
 
@@ -55,8 +65,12 @@ where
     let mut child = exec_script(script)
         .await
         .context("unable to execute script")?;
-    task::spawn(log_stdio(child.stdout.take().unwrap(), StdioType::Stdout));
-    task::spawn(log_stdio(child.stderr.take().unwrap(), StdioType::Stderr));
+    let (tx, rx) = oneshot::channel();
+    let logger = task::spawn(log_output(
+        child.stdout.take().unwrap(),
+        child.stderr.take().unwrap(),
+        rx,
+    ));
     let pidfd = AsyncFd::new(
         PidFd::from_pid(child.id().unwrap() as i32)
             .context("unable to create PidFd from child pid")?,
@@ -65,13 +79,22 @@ where
     Ok(select! {
         timeout_res = timeout(script_timeout, pidfd.readable()) => {
             if timeout_res.is_ok() {
-                ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
+                let status = pidfd.get_ref().wait().context("unable to call waitid on child process")?.status();
+                if !tx.is_closed() {
+                    tx.send(()).unwrap();
+                }
+                logger.await??;
+                ScriptResult::Exited(status)
             } else {
-                ScriptResult::Running(pidfd)
+                ScriptResult::Running(pidfd, logger, tx)
             }
         }
         _ = wait() => {
             kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+            if !tx.is_closed() {
+                tx.send(()).unwrap();
+            }
+            logger.await??;
             ScriptResult::SignalReceived
         }
     })
@@ -112,7 +135,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
                     let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                 }
             }
-            ScriptResult::Running(pidfd) => {
+            ScriptResult::Running(pidfd, logger, tx) => {
                 time_tried = 0;
                 let request = Request::ServiceIsUp(longrun.name.clone(), true);
                 // TODO: handle this
@@ -129,12 +152,16 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
                         // stop running
                         kill_process(&pidfd, longrun.run.down_signal, longrun.run.timeout_kill)
                             .await?;
-                        if let Some(finish_script) = &longrun.finish {
-                            let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
-                        }
                         break;
                     }
-                    ScriptResult::Running(_) => unreachable!(),
+                    ScriptResult::Running(..) => unreachable!(),
+                }
+                if !tx.is_closed() {
+                    tx.send(()).unwrap();
+                }
+                logger.await??;
+                if let Some(finish_script) = &longrun.finish {
+                    let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
                 }
             }
             ScriptResult::SignalReceived => break,
@@ -197,7 +224,7 @@ mod test {
         script.timeout = 1;
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
-        if let ScriptResult::Running(pidfd) = pidfd {
+        if let ScriptResult::Running(pidfd, ..) = pidfd {
             assert!(matches!(
                 supervise(&pidfd, wait!(1000)).await.unwrap(),
                 ScriptResult::Exited(..)
@@ -211,7 +238,7 @@ mod test {
         script.timeout = 1;
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
-        if let ScriptResult::Running(pidfd) = pidfd {
+        if let ScriptResult::Running(pidfd, ..) = pidfd {
             assert!(matches!(
                 supervise(&pidfd, wait!(1)).await.unwrap(),
                 ScriptResult::SignalReceived
