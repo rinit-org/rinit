@@ -224,7 +224,9 @@ mod test {
         script.timeout = 1;
         let pidfd = start_process(&script, wait!(1000)).await.unwrap();
         assert!(matches!(pidfd, ScriptResult::Running(..)));
-        if let ScriptResult::Running(pidfd, ..) = pidfd {
+        if let ScriptResult::Running(pidfd, logger, tx) = pidfd {
+            tx.send(()).unwrap();
+            logger.await.unwrap().unwrap();
             assert!(matches!(
                 supervise(&pidfd, wait!(1000)).await.unwrap(),
                 ScriptResult::Exited(..)
