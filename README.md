@@ -6,7 +6,7 @@
 
 **rinit** is a next generation init and service manager for Linux and written in Rust.
 It is inspired by [66](https://web.obarun.org/software/66),
-[s6](https://skarnet.org/software/s6/) suite and [deamontools](http://cr.yp.to/daemontools.html).
+[s6](https://skarnet.org/software/s6/) suite and [daemontools](http://cr.yp.to/daemontools.html).
 
 NOTE: This is still a work in progress, please run at your own risk.
 
@@ -14,7 +14,7 @@ This project was initially written in C++ and called [tt](https://github.com/dan
 
 ## Features
 
-- Support for different types of programs: _oneshot_ and _deamons_
+- Support for different types of programs: _oneshot_ and _daemons_
 - Predictable dependencies at build time
 - Configurable parameters for services
 - Asynchronous start of the services
@@ -124,7 +124,7 @@ affects and the directory used for the configuration.
 
 All three of them requires to have `rctl` and `rsvc` into your `PATH`.
 
-Currently the only mode tested is the _user mode_.
+Currently the only tested mode is the _user mode_.
 
 ### User mode
 
