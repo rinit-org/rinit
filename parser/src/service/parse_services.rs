@@ -1,6 +1,9 @@
-use std::path::{
-    Path,
-    PathBuf,
+use std::{
+    collections::HashSet,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use rinit_service::types::Service;
@@ -36,7 +39,7 @@ pub fn parse_services(
     service_dirs: &[PathBuf],
     system: bool,
 ) -> Result<Vec<Service>, ServicesParserError> {
-    let mut services_already_parsed = services.clone();
+    let mut services_already_parsed = services.clone().into_iter().collect::<HashSet<String>>();
     let mut results = Vec::new();
     let mut to_parse = services
         .into_iter()
@@ -56,17 +59,24 @@ pub fn parse_services(
             service.name() == name,
             NameNotMatchingFileSnafu { service_file: file }
         );
-        let mut dependencies: Vec<String> = service.dependencies().into();
-
-        results.push(service);
-
         // Skip services that we can't found, the dependency graph will
         // handle the error
-        to_parse.extend(dependencies.iter().filter_map(|service| {
-            get_service_file(service, service_dirs, system).map(|file| (service.clone(), file))
-        }));
+        to_parse.extend(
+            service
+                .dependencies()
+                .clone()
+                .into_iter()
+                .filter_map(|service| {
+                    if services_already_parsed.insert(service.clone()) {
+                        get_service_file(service, service_dirs, system)
+                            .map(|file| (service.clone(), file))
+                    } else {
+                        None
+                    }
+                }),
+        );
 
-        services_already_parsed.append(&mut dependencies);
+        results.push(service);
     }
 
     Ok(results)
