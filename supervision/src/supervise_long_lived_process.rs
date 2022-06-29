@@ -119,7 +119,12 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
                 conn.send_request(request).await??;
                 let res = supervise(&pidfd, signal_wait_fun()).await?;
                 match res {
-                    ScriptResult::Exited(_) => {}
+                    ScriptResult::Exited(_) => {
+                        // Notify that it stopped
+                        let request = Request::ServiceIsUp(longrun.name.clone(), false);
+                        // TODO: handle this
+                        conn.send_request(request).await??;
+                    }
                     ScriptResult::SignalReceived => {
                         // stop running
                         kill_process(&pidfd, longrun.run.down_signal, longrun.run.timeout_kill)
