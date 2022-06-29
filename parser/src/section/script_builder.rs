@@ -174,6 +174,6 @@ mod test {
 
         let script = builder.script.unwrap().unwrap();
         assert_eq!(script.prefix, ScriptPrefix::Bash);
-        assert_eq!(script.execute, "    exit 0".to_string());
+        assert_eq!(script.execute, "    exit 0\n".to_string());
     }
 }
