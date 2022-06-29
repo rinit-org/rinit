@@ -26,6 +26,9 @@ tracing-appender = "0.2.2"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.11", features = [ "env-filter" ] }
 
+[dev-dependencies]
+cargo-husky = { version = "1", features = [ "run-cargo-clippy", "run-cargo-check", "run-cargo-fmt" ] }
+
 [[bin]]
 name = "rsupervision"
 path = "src/main.rs"
