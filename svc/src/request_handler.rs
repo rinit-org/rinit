@@ -83,8 +83,10 @@ impl RequestHandler {
                 let live_service = self.graph.get_service(&name)?;
                 live_service.update_state(
                     if up {
+                        tracing::info!("{name} is up!");
                         ServiceState::Up
                     } else {
+                        tracing::info!("{name} is down!");
                         ServiceState::Down
                     },
                 );
