@@ -149,12 +149,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
         _ => unreachable!(),
     };
     let mut conn = AsyncConnection::new_host_address().await?;
-    loop {
-        let running_script = match try_start_process(&longrun, signal_wait_fun()).await? {
-            Some(running_script) => running_script,
-            None => break,
-        };
-
+    while let Some(running_script) = try_start_process(&longrun, signal_wait_fun()).await? {
         let request = Request::ServiceIsUp(longrun.name.clone(), true);
         // TODO: handle this
         conn.send_request(request).await??;

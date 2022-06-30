@@ -1,7 +1,4 @@
-use std::{
-    future,
-    io,
-};
+use std::future;
 
 use anyhow::Result;
 use tokio::{
@@ -36,7 +33,7 @@ pub fn log_buf(
     buf: &[u8],
     stdio: &'static str,
 ) -> Result<()> {
-    let buf: &str = std::str::from_utf8(&buf)?;
+    let buf: &str = std::str::from_utf8(buf)?;
     let mut last_newline = 0;
     // If there is output remaining from the latest read call
     // and there is a newline in buf

@@ -61,20 +61,13 @@ pub fn parse_services(
         );
         // Skip services that we can't found, the dependency graph will
         // handle the error
-        to_parse.extend(
-            service
-                .dependencies()
-                .clone()
-                .into_iter()
-                .filter_map(|service| {
-                    if services_already_parsed.insert(service.clone()) {
-                        get_service_file(service, service_dirs, system)
-                            .map(|file| (service.clone(), file))
-                    } else {
-                        None
-                    }
-                }),
-        );
+        to_parse.extend(service.dependencies().iter().filter_map(|service| {
+            if services_already_parsed.insert(service.clone()) {
+                get_service_file(service, service_dirs, system).map(|file| (service.clone(), file))
+            } else {
+                None
+            }
+        }));
 
         results.push(service);
     }

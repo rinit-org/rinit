@@ -26,8 +26,6 @@ use crate::{
     exec_script,
     kill_process,
     log_output,
-    log_stdio,
-    StdioType,
 };
 
 #[derive(Debug, PartialEq, Eq)]
