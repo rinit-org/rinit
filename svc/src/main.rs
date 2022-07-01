@@ -45,7 +45,7 @@ use tracing::{
 #[macro_use]
 extern crate lazy_static;
 
-fn parse_config_file() -> Result<Option<PathBuf>, lexopt::Error> {
+fn parse_args() -> Result<Option<PathBuf>, lexopt::Error> {
     let mut config: Option<PathBuf> = None;
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
@@ -80,7 +80,7 @@ pub async fn signal_wait() {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let config_file = parse_config_file()?;
+    let config_file = parse_args()?;
     let config = Config::new(config_file)?;
 
     // Setup logging

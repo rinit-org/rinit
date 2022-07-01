@@ -6,6 +6,10 @@ use anyhow::{
     Result,
 };
 use clap::Parser;
+use rinit_ipc::{
+    AsyncConnection,
+    Request,
+};
 use rinit_service::graph::DependencyGraph;
 
 use crate::Config;
@@ -62,6 +66,13 @@ impl DisableCommand {
             serde_json::to_vec(&graph).context("unable to serialize the dependency graph")?,
         )
         .with_context(|| format!("unable to write the dependency graph to {:?}", graph_file))?;
+
+        if let Ok(mut conn) = AsyncConnection::new_host_address().await {
+            let request = Request::ReloadGraph;
+            conn.send_request(request).await??;
+        } else {
+            eprintln!("unable to connect to rsvc");
+        }
 
         Ok(())
     }

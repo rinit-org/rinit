@@ -22,6 +22,8 @@ pub enum LogicError {
         service: String,
         dependents: Vec<String>,
     },
+    #[snafu(display("dependency graph not found in path {path}"))]
+    DependencyGraphNotFound { path: String },
     #[snafu(display("service {service} failed to start"))]
     ServiceFailedToStart { service: String },
     #[snafu(display("service {service} does not exists"))]

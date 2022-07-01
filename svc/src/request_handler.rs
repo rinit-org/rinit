@@ -12,6 +12,7 @@ use rinit_ipc::{
 use rinit_service::service_state::ServiceState;
 use tokio::{
     net::UnixStream,
+    sync::RwLock,
     task,
 };
 
@@ -26,12 +27,14 @@ use crate::{
 type ConnectionError = ConnectionErrorGeneric<Result<Reply, RequestError>>;
 
 pub struct RequestHandler {
-    graph: LiveServiceGraph,
+    graph: RwLock<LiveServiceGraph>,
 }
 
 impl RequestHandler {
     pub fn new(graph: LiveServiceGraph) -> Self {
-        Self { graph }
+        Self {
+            graph: RwLock::new(graph),
+        }
     }
 
     pub async fn handle_stream(
@@ -78,24 +81,25 @@ impl RequestHandler {
         &self,
         request: Request,
     ) -> Result<Reply, RequestError> {
+        let graph = self.graph.read().await;
         Ok(match request {
             Request::ServiceIsUp(name, up) => {
-                let live_service = self.graph.get_service(&name)?;
-                live_service.update_state(
-                    if up {
-                        tracing::info!("{name} is up!");
-                        ServiceState::Up
-                    } else {
-                        tracing::info!("{name} is down!");
-                        ServiceState::Down
-                    },
-                );
-                live_service.tx.send(()).unwrap();
+                let new_state = if up {
+                    ServiceState::Up
+                } else {
+                    ServiceState::Down
+                };
+                graph.update_service_state(&name, new_state)?;
+                if matches!(new_state, ServiceState::Down) {
+                    drop(graph);
+                    let mut graph = self.graph.write().await;
+                    graph.update_service(&name)?;
+                }
                 Reply::Empty
             }
             Request::ServicesStatus() => {
                 let services: Vec<Result<&LiveService, LiveGraphError>> =
-                    self.graph.live_services.iter().map(Result::Ok).collect();
+                    graph.live_services.iter().map(Result::Ok).collect();
                 let states = stream::iter(services)
                     .then(async move |res| {
                         match res {
@@ -113,33 +117,34 @@ impl RequestHandler {
                 Reply::ServicesStates(states.into_iter().collect::<Result<Vec<_>, _>>()?)
             }
             Request::ServiceStatus(service) => {
-                Reply::ServiceState(
-                    service.clone(),
-                    self.graph.get_service(&service)?.get_final_state().await,
-                )
+                let state = graph.get_service(&service)?.get_final_state();
+                drop(graph);
+                Reply::ServiceState(service.clone(), state.await)
             }
             Request::StartService(service) => {
-                self.graph
-                    .start_service(self.graph.get_service(&service)?)
-                    .await?;
-                Reply::Success(
-                    self.graph.get_service(&service)?.get_final_state().await == ServiceState::Up,
-                )
+                graph.start_service(graph.get_service(&service)?).await?;
+                let state = graph.get_service(&service)?.get_final_state();
+                drop(graph);
+                Reply::Success(state.await == ServiceState::Up)
             }
             Request::StopService(service) => {
-                self.graph
-                    .stop_service(self.graph.get_service(&service)?)
-                    .await?;
-                Reply::Success(
-                    self.graph.get_service(&service)?.get_final_state().await == ServiceState::Down,
-                )
+                graph.stop_service(graph.get_service(&service)?).await?;
+                let state = graph.get_service(&service)?.get_final_state();
+                drop(graph);
+                Reply::Success(state.await == ServiceState::Down)
             }
             Request::StartAllServices => {
-                self.graph.start_all_services().await;
+                graph.start_all_services().await;
                 Reply::Empty
             }
             Request::StopAllServices => {
-                self.graph.stop_all_services().await;
+                graph.stop_all_services().await;
+                Reply::Empty
+            }
+            Request::ReloadGraph => {
+                drop(graph);
+                let mut graph = self.graph.write().await;
+                graph.reload_dependency_graph().await?;
                 Reply::Empty
             }
         })

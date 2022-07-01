@@ -13,6 +13,7 @@ pub enum Request {
     StopService(String),
     StartAllServices,
     StopAllServices,
+    ReloadGraph,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

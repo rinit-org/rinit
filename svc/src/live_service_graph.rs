@@ -1,6 +1,9 @@
 use std::{
     self,
-    collections::HashMap,
+    collections::{
+        HashMap,
+        TryReserveError,
+    },
     io,
     os::unix::prelude::{
         AsRawFd,
@@ -15,6 +18,7 @@ use async_recursion::async_recursion;
 use async_scoped_local::TokioScope;
 use rinit_ipc::request_error::{
     DependencyFailedToStartSnafu,
+    DependencyGraphNotFoundSnafu,
     DependentsStillRunningSnafu,
     LogicError,
     RequestError,
@@ -30,6 +34,7 @@ use rinit_service::{
 use snafu::{
     ensure,
     IntoError,
+    OptionExt,
     ResultExt,
     Snafu,
 };
@@ -63,6 +68,8 @@ pub enum SystemError {
     PidFdWaitError { source: io::Error },
     #[snafu(display("error when spawning the supervisor: {source}"))]
     SpawnError { source: io::Error },
+    #[snafu(display("error when allocating into the memory: {source}"))]
+    TryReserveError { source: TryReserveError },
 }
 
 // Snafu doesn't work with enums of enums
@@ -437,6 +444,159 @@ impl LiveServiceGraph {
                 dependents: dependents_running,
             }
         );
+        Ok(())
+    }
+
+    pub async fn reload_dependency_graph(&mut self) -> Result<()> {
+        let graph_file = self.config.get_graph_filename();
+        ensure!(
+            graph_file.exists(),
+            DependencyGraphNotFoundSnafu {
+                path: graph_file.to_string_lossy()
+            }
+        );
+        let mut dep_graph: DependencyGraph =
+            serde_json::from_slice(&std::fs::read(graph_file).with_context(|_| ReadGraphSnafu)?)
+                .with_context(|_| JsonDeserializeSnafu)?;
+
+        // Assume that the depedency graph only contains services that are needed
+        // and that is correct. This way we can skip checking dependencies and other
+        // requirements, and skip directly to checking service per service.
+        // https://github.com/danyspin97/tt/blob/master/src/svc/live_service_graph.cpp
+
+        // We could have inserted the index instead of the boolean, but using
+        // swap_remove means that we invalidate these indexes. swap_remove cost
+        // O(1) and remove O(n) making it worth all the hashmap access
+        let mut services: HashMap<String, (bool, bool)> = HashMap::new();
+        for service in &self.indexes {
+            services.insert(service.0.clone(), (true, false));
+        }
+
+        for service in &dep_graph.nodes_index {
+            let left = services
+                .get(service.0.as_str())
+                .map(|(left, _)| *left)
+                .unwrap_or(false);
+            services.insert(service.0.clone(), (left, true));
+        }
+
+        // Reserve memory for new services in advance, do not panic on memory allocation
+        // fail
+        self.live_services
+            .try_reserve_exact(services.iter().filter(|(_, (_, right))| *right).count())
+            .with_context(|_| TryReserveSnafu)?;
+        let mut index = self.live_services.len();
+        for service in services {
+            let name = service.0;
+            match service.1 {
+                // There is a new service, add it to the graph without starting it
+                (false, true) => {
+                    let new = dep_graph.nodes_index[&name];
+
+                    self.live_services
+                        .push(LiveService::new(dep_graph.nodes.swap_remove(new)));
+                    self.indexes.insert(name, index);
+                    index = index + 1;
+
+                    // swap_remove put the last element in place of the removed
+                    // one update the index of this one
+                    dep_graph
+                        .nodes_index
+                        .insert(dep_graph.nodes[new].name().to_string(), new);
+                }
+                // This service is only the live state and not in the new dependency graph
+                // mark it for removal
+                (true, false) => {
+                    let existing = self.indexes[&name];
+                    self.live_services[existing].remove = true;
+                }
+                // This service is in both graph, update it now/later
+                (true, true) => {
+                    let existing = self.indexes[&name];
+                    let new = dep_graph.nodes_index[&name];
+
+                    let new_live_service = LiveService::new(dep_graph.nodes.swap_remove(new));
+                    let state = *self.live_services[existing].state.borrow();
+                    match state {
+                        // If a service is already down or in reset state, just update it with
+                        // the new one
+                        ServiceState::Reset | ServiceState::Down => {
+                            new_live_service.update_state(state);
+                            self.live_services[existing] = new_live_service;
+                            // Keep the current state
+                        }
+                        // otherwise, mark it for update. It will be updated by
+                        // update_service_state
+                        ServiceState::Up | ServiceState::Starting | ServiceState::Stopping => {
+                            self.live_services[existing].new = Some(Box::new(new_live_service));
+                        }
+                    }
+
+                    // swap_remove put the last element in place of the removed
+                    // one, update the index of this one if it was not the last element
+                    if new != dep_graph.nodes.len() {
+                        dep_graph
+                            .nodes_index
+                            .insert(dep_graph.nodes[new].name().to_string(), new);
+                    }
+                }
+                (false, false) => unreachable!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn update_service_state(
+        &self,
+        name: &str,
+        state: ServiceState,
+    ) -> Result<()> {
+        let live_service = self.get_service(name)?;
+        live_service.update_state(state);
+        live_service.tx.send(state).unwrap();
+        Ok(())
+    }
+
+    pub fn update_service(
+        &mut self,
+        name: &str,
+    ) -> Result<()> {
+        let index = *self.indexes.get(name).with_context(|| {
+            ServiceNotFoundSnafu {
+                service: name.to_string(),
+            }
+        })?;
+
+        let live_service = &self.live_services[index];
+        // the service is marked for removal
+        if live_service.remove {
+            // remove the name from the indexes
+            self.indexes.remove(&live_service.node.name().to_string());
+            // drop the reference to self.live_services, so that we can borrow mut
+            drop(live_service);
+            // remove in O(1)
+            self.live_services.swap_remove(index);
+            // Update index of the swapped service
+            self.indexes
+                .insert(self.live_services[index].node.name().to_string(), index);
+        // There is a new version of this service
+        } else if live_service.new.is_some() {
+            let live_service = self.live_services.swap_remove(index);
+            // swap_remove directly removes the item when it is the last
+            // check this occurence
+            if index != self.live_services.len() {
+                self.indexes
+                    .insert(self.live_services[index].node.name().to_string(), index);
+                self.indexes.insert(
+                    live_service.node.name().to_string(),
+                    self.live_services.len(),
+                );
+            }
+            let new_live_service = live_service.new.unwrap();
+            new_live_service.update_state(ServiceState::Down);
+            self.live_services.push(*new_live_service);
+        }
         Ok(())
     }
 }

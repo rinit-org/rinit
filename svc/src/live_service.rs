@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_pidfd::PidFd;
+use futures::future::BoxFuture;
 use rinit_service::{
     graph::Node,
     service_state::ServiceState,
@@ -23,9 +24,9 @@ use tokio::{
 // To avoid passing &mut LiveService, it is encapsulated by RefCell
 pub struct LiveService {
     pub node: Node,
-    pub tx: Sender<()>,
+    pub tx: Sender<ServiceState>,
     // Keep a receiving end open so that the sender can always send data
-    _rx: Receiver<()>,
+    _rx: Receiver<ServiceState>,
     pub state: RefCell<ServiceState>,
     pub pidfd: RefCell<Option<AsyncFd<PidFd>>>,
     pub remove: bool,
@@ -75,17 +76,27 @@ impl LiveService {
     }
 
     /// Wait until we have one of the 3 final states
-    pub async fn get_final_state(&self) -> ServiceState {
+    pub fn get_final_state(&self) -> BoxFuture<'static, ServiceState> {
         let state = *self.state.borrow();
-        if matches!(state, ServiceState::Starting | ServiceState::Stopping)
-            && timeout(self.get_timeout(), self.tx.subscribe().recv())
-                .await
-                .is_err()
-        {
-            // the wait timed out
-            return ServiceState::Down;
+        if matches!(state, ServiceState::Starting | ServiceState::Stopping) {
+            let mut rx = self.tx.subscribe();
+            let service_timeout = self.get_timeout();
+            return Box::pin(async move {
+                match timeout(service_timeout, rx.recv()).await {
+                    Ok(res) => {
+                        match res {
+                            Ok(state) => state,
+                            Err(_) => ServiceState::Down,
+                        }
+                    }
+                    // the wait timed out
+                    Err(_) => ServiceState::Down,
+                }
+            });
         }
-        *self.state.borrow()
+
+        let state = *self.state.borrow();
+        Box::pin(async move { state })
     }
 
     pub fn update_state(

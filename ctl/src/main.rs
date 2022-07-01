@@ -11,6 +11,7 @@ enum Command {
     Status(StatusCommand),
     Start(StartCommand),
     Stop(StopCommand),
+    Reload(ReloadCommand),
 }
 
 #[derive(Parser)]
@@ -21,6 +22,7 @@ struct Opts {
 use command::{
     DisableCommand,
     EnableCommand,
+    ReloadCommand,
     StartCommand,
     StatusCommand,
     StopCommand,
@@ -39,6 +41,7 @@ async fn main() -> Result<()> {
         Command::Status(status_command) => status_command.run(config).await?,
         Command::Start(start_command) => start_command.run(config).await?,
         Command::Stop(stop_command) => stop_command.run(config).await?,
+        Command::Reload(reload_command) => reload_command.run(config).await?,
     }
 
     Ok(())

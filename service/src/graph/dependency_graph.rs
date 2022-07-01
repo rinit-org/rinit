@@ -33,7 +33,7 @@ pub enum DependencyGraphError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DependencyGraph {
     pub enabled_services: HashSet<usize>,
-    nodes_index: HashMap<String, usize>,
+    pub nodes_index: HashMap<String, usize>,
     pub nodes: Vec<Node>,
 }
 
