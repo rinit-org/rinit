@@ -438,6 +438,7 @@ checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
 dependencies = [
  "autocfg",
  "hashbrown",
+ "serde",
 ]
 
 [[package]]
@@ -850,6 +851,7 @@ dependencies = [
 name = "rinit-service"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "libc",
  "serde",
  "serde_with",

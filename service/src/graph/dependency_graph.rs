@@ -3,6 +3,7 @@ use std::collections::{
     HashSet,
 };
 
+use indexmap::IndexMap;
 use serde::{
     Deserialize,
     Serialize,
@@ -33,8 +34,7 @@ pub enum DependencyGraphError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DependencyGraph {
     pub enabled_services: HashSet<usize>,
-    pub nodes_index: HashMap<String, usize>,
-    pub nodes: Vec<Node>,
+    pub nodes: IndexMap<String, Node>,
 }
 
 enum Color {
@@ -47,8 +47,7 @@ impl DependencyGraph {
     pub fn new() -> Self {
         DependencyGraph {
             enabled_services: HashSet::new(),
-            nodes_index: HashMap::new(),
-            nodes: Vec::new(),
+            nodes: IndexMap::new(),
         }
     }
 }
@@ -70,7 +69,7 @@ impl DependencyGraph {
         services: Vec<Service>,
     ) -> Result<()> {
         services_to_enable.iter().try_for_each(|service| {
-            if let Some(index) = &self.nodes_index.get(service) {
+            if let Some(index) = &self.nodes.get_index_of(service) {
                 ensure!(
                     !self.enabled_services.contains(index),
                     ServiceAlreadyEnabledSnafu { service }
@@ -85,7 +84,7 @@ impl DependencyGraph {
         // This way we can optimize the addition of services
         let (new_services, existing_services) = services
             .into_iter()
-            .partition(|service| self.get_index_from_name(service.name()).is_none());
+            .partition(|service| !self.nodes.contains_key(service.name()));
 
         let index = self.nodes.len();
         self.add_nodes(new_services);
@@ -99,18 +98,18 @@ impl DependencyGraph {
 
         // Update enabled services set and populate dependents
         services_to_enable.iter().for_each(|service| {
-            let index = *self.get_index_from_name(service).unwrap();
+            let index = self.nodes.get_index_of(service).unwrap();
             self.enabled_services.insert(index);
             let dependencies = self.nodes[index].service.dependencies().to_owned();
             for dep in dependencies {
-                self.get_node_from_name(&dep).add_dependent(index);
+                self.nodes.get_mut(&dep).unwrap().add_dependent(index);
             }
         });
 
         self.check_cycles(
             services_to_enable
                 .iter()
-                .map(|name| *self.get_index_from_name(name).unwrap())
+                .map(|name| self.nodes.get_index_of(name).unwrap())
                 .collect(),
         )?;
 
@@ -122,14 +121,11 @@ impl DependencyGraph {
         services: Vec<Service>,
     ) -> usize {
         let ret = self.nodes.len();
-        let mut current_index = ret;
-        self.nodes.reserve_exact(services.len());
-        services.into_iter().for_each(|service| {
-            self.nodes.push(Node::new(service));
-            self.nodes_index
-                .insert(self.nodes.last().unwrap().name().to_string(), current_index);
-            current_index += 1;
-        });
+        self.nodes.reserve(services.len());
+        for service in services {
+            self.nodes
+                .insert(service.name().to_string(), Node::new(service));
+        }
 
         ret
     }
@@ -144,9 +140,8 @@ impl DependencyGraph {
         services
             .into_iter()
             .map(|new_service| -> bool {
-                let service_index = *self.nodes_index.get(new_service.name()).unwrap();
-                let existing_service = &self.nodes.get(service_index).unwrap().service;
-
+                let (service_index, _, node) = self.nodes.get_full(new_service.name()).unwrap();
+                let existing_service = &node.service;
                 if existing_service == &new_service {
                     return false;
                 }
@@ -154,10 +149,13 @@ impl DependencyGraph {
                 // Remove all instances of this service from Node::dependents
                 let dependencies = existing_service.dependencies().to_owned();
                 for dep in dependencies {
-                    self.get_node_from_name(dep.as_str())
+                    self.nodes
+                        .get_mut(&dep)
+                        .unwrap()
                         .remove_dependent(service_index);
                 }
-                self.nodes.insert(service_index, Node::new(new_service));
+                self.nodes
+                    .insert(new_service.name().to_string(), Node::new(new_service));
                 self.populate_dependents(&[service_index]);
                 true
             })
@@ -169,12 +167,12 @@ impl DependencyGraph {
         services_index: &[usize],
     ) {
         services_index.iter().for_each(|index| {
-            let node = self.nodes.get(*index).unwrap();
+            let (_, node) = self.nodes.get_index(*index).unwrap();
             node.service
                 .dependencies()
                 .to_owned()
                 .iter()
-                .for_each(|dep| self.get_node_from_name(dep).add_dependent(*index));
+                .for_each(|dep| self.nodes.get_mut(dep).unwrap().add_dependent(*index));
         });
     }
 
@@ -182,8 +180,9 @@ impl DependencyGraph {
         &self,
         from: usize,
     ) -> Result<()> {
-        self.nodes[from..]
-            .iter()
+        self.nodes
+            .values()
+            .skip(from)
             .try_for_each(|node| -> Result<()> {
                 node.service
                     .dependencies()
@@ -209,12 +208,7 @@ impl DependencyGraph {
         let mut colors: HashMap<usize, Color> = self
             .nodes
             .iter()
-            .map(|node| {
-                (
-                    *self.get_index_from_name(node.name()).unwrap(),
-                    Color::White,
-                )
-            })
+            .map(|(name, _node)| (self.nodes.get_index_of(name).unwrap(), Color::White))
             .collect();
 
         services_to_enable
@@ -223,6 +217,7 @@ impl DependencyGraph {
 
         Ok(())
     }
+
     fn visit(
         &self,
         colors: &mut HashMap<usize, Color>,
@@ -231,12 +226,13 @@ impl DependencyGraph {
         colors.insert(node, Color::Gray);
 
         self.nodes
-            .get(node)
+            .get_index(node)
             .unwrap()
+            .1
             .service
             .dependencies()
             .iter()
-            .map(|dep| *self.get_index_from_name(dep).unwrap())
+            .map(|dep| self.nodes.get_index_of(dep).unwrap())
             .try_for_each(|dep| -> Result<()> {
                 match colors.get(&dep).unwrap() {
                     Color::White => self.visit(colors, dep),
@@ -254,9 +250,9 @@ impl DependencyGraph {
         services: Vec<String>,
     ) -> Result<()> {
         services.iter().try_for_each(|service| -> Result<()> {
-            let node_index = *self
-                .nodes_index
-                .get(service)
+            let node_index = self
+                .nodes
+                .get_index_of(service)
                 .context(ServiceNotEnabledSnafu { service })?;
             self.enabled_services.remove(&node_index);
             if !self.is_node_required(node_index) {
@@ -283,7 +279,7 @@ impl DependencyGraph {
             .to_owned()
             .iter()
             .for_each(|dep| {
-                let dep_index = *self.get_index_from_name(dep).unwrap();
+                let dep_index = self.nodes.get_index_of(dep).unwrap();
                 self.nodes[dep_index].remove_dependent(index);
                 if !self.is_node_required(dep_index) {
                     self.remove_node(dep_index)
@@ -293,14 +289,10 @@ impl DependencyGraph {
         // The node to remove is the last one
         if index == self.nodes.len() - 1 {
             self.nodes.pop();
-            self.nodes_index.remove(&name);
             return;
         }
 
-        self.nodes[index] = self.nodes.pop().unwrap();
-        self.nodes_index
-            .insert(self.nodes[index].name().to_string(), index);
-        self.nodes_index.remove(&name);
+        self.nodes[index] = self.nodes.pop().unwrap().1;
     }
 
     fn is_node_required(
@@ -315,25 +307,7 @@ impl DependencyGraph {
         &self,
         name: &str,
     ) -> bool {
-        self.nodes_index.contains_key(name)
-    }
-
-    #[inline]
-    fn get_node_from_name(
-        &mut self,
-        name: &str,
-    ) -> &mut Node {
-        self.nodes
-            .get_mut(*self.nodes_index.get(name).unwrap())
-            .unwrap()
-    }
-
-    #[inline]
-    fn get_index_from_name(
-        &self,
-        name: &str,
-    ) -> Option<&usize> {
-        self.nodes_index.get(name)
+        self.nodes.contains_key(name)
     }
 }
 

@@ -141,7 +141,12 @@ impl LiveServiceGraph {
         } else {
             DependencyGraph::new()
         };
-        let nodes: Vec<_> = graph.nodes.into_iter().map(LiveService::new).collect();
+        let nodes: Vec<_> = graph
+            .nodes
+            .into_iter()
+            .map(|(_, node)| node)
+            .map(LiveService::new)
+            .collect();
         Ok(Self {
             indexes: nodes
                 .iter()
@@ -472,7 +477,7 @@ impl LiveServiceGraph {
             services.insert(service.0.clone(), (true, false));
         }
 
-        for service in &dep_graph.nodes_index {
+        for service in &dep_graph.nodes {
             let left = services
                 .get(service.0.as_str())
                 .map(|(left, _)| *left)
@@ -491,18 +496,11 @@ impl LiveServiceGraph {
             match service.1 {
                 // There is a new service, add it to the graph without starting it
                 (false, true) => {
-                    let new = dep_graph.nodes_index[&name];
-
-                    self.live_services
-                        .push(LiveService::new(dep_graph.nodes.swap_remove(new)));
+                    self.live_services.push(LiveService::new(
+                        dep_graph.nodes.swap_remove(&name).unwrap(),
+                    ));
                     self.indexes.insert(name, index);
                     index = index + 1;
-
-                    // swap_remove put the last element in place of the removed
-                    // one update the index of this one
-                    dep_graph
-                        .nodes_index
-                        .insert(dep_graph.nodes[new].name().to_string(), new);
                 }
                 // This service is only the live state and not in the new dependency graph
                 // mark it for removal
@@ -513,9 +511,9 @@ impl LiveServiceGraph {
                 // This service is in both graph, update it now/later
                 (true, true) => {
                     let existing = self.indexes[&name];
-                    let new = dep_graph.nodes_index[&name];
 
-                    let new_live_service = LiveService::new(dep_graph.nodes.swap_remove(new));
+                    let new_live_service =
+                        LiveService::new(dep_graph.nodes.swap_remove(&name).unwrap());
                     let state = *self.live_services[existing].state.borrow();
                     match state {
                         // If a service is already down or in reset state, just update it with
@@ -530,14 +528,6 @@ impl LiveServiceGraph {
                         ServiceState::Up | ServiceState::Starting | ServiceState::Stopping => {
                             self.live_services[existing].new = Some(Box::new(new_live_service));
                         }
-                    }
-
-                    // swap_remove put the last element in place of the removed
-                    // one, update the index of this one if it was not the last element
-                    if new != dep_graph.nodes.len() {
-                        dep_graph
-                            .nodes_index
-                            .insert(dep_graph.nodes[new].name().to_string(), new);
                     }
                 }
                 (false, false) => unreachable!(),
