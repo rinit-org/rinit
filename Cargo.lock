@@ -896,6 +896,7 @@ dependencies = [
  "async-recursion",
  "async-scoped-local",
  "futures",
+ "indexmap",
  "lazy_static",
  "lexopt",
  "libc",

@@ -98,8 +98,12 @@ impl RequestHandler {
                 Reply::Empty
             }
             Request::ServicesStatus() => {
-                let services: Vec<Result<&LiveService, LiveGraphError>> =
-                    graph.live_services.iter().map(Result::Ok).collect();
+                let services: Vec<Result<&LiveService, LiveGraphError>> = graph
+                    .live_services
+                    .iter()
+                    .map(|(_, live_service)| live_service)
+                    .map(Result::Ok)
+                    .collect();
                 let states = stream::iter(services)
                     .then(async move |res| {
                         match res {

@@ -16,6 +16,7 @@ use std::{
 use async_pidfd::PidFd;
 use async_recursion::async_recursion;
 use async_scoped_local::TokioScope;
+use indexmap::IndexMap;
 use rinit_ipc::request_error::{
     DependencyFailedToStartSnafu,
     DependencyGraphNotFoundSnafu,
@@ -47,8 +48,7 @@ use tokio_stream::StreamExt;
 use crate::live_service::LiveService;
 
 pub struct LiveServiceGraph {
-    pub indexes: HashMap<String, usize>,
-    pub live_services: Vec<LiveService>,
+    pub live_services: IndexMap<String, LiveService>,
     config: Config,
 }
 
@@ -141,19 +141,12 @@ impl LiveServiceGraph {
         } else {
             DependencyGraph::new()
         };
-        let nodes: Vec<_> = graph
-            .nodes
-            .into_iter()
-            .map(|(_, node)| node)
-            .map(LiveService::new)
-            .collect();
         Ok(Self {
-            indexes: nodes
-                .iter()
-                .enumerate()
-                .map(|(i, el)| (el.node.name().to_owned(), i))
+            live_services: graph
+                .nodes
+                .into_iter()
+                .map(|(name, node)| (name, LiveService::new(node)))
                 .collect(),
-            live_services: nodes,
             config,
         })
     }
@@ -164,7 +157,7 @@ impl LiveServiceGraph {
         // so it's safe to use it
         let (_, futures) = unsafe {
             TokioScope::scope_and_collect(|s| {
-                self.live_services.iter().for_each(|live_service| {
+                self.live_services.iter().for_each(|(_, live_service)| {
                     s.spawn(async move {
                         if live_service.node.service.should_start() {
                             // TODO: Generate an order of the services to start and use
@@ -228,10 +221,7 @@ impl LiveServiceGraph {
             .dependencies()
             .iter()
             .map(async move |dep| -> Result<()> {
-                let dep_service = self
-                    .live_services
-                    .get(*self.indexes.get(dep).unwrap())
-                    .unwrap();
+                let dep_service = self.live_services.get(dep).unwrap();
                 if matches!(
                     dep_service.get_final_state().await,
                     ServiceState::Reset | ServiceState::Down
@@ -295,7 +285,7 @@ impl LiveServiceGraph {
         live_service: &LiveService,
     ) -> Result<()> {
         for dep in live_service.node.service.dependencies() {
-            let dep_service = self._get_service(dep);
+            let dep_service = &self.live_services[dep];
             let state = dep_service.get_final_state().await;
             ensure!(
                 state == ServiceState::Up,
@@ -360,7 +350,7 @@ impl LiveServiceGraph {
         // so it's safe to use it
         let (_res, futures) = unsafe {
             TokioScope::scope_and_collect(|s| {
-                for live_service in &self.live_services {
+                for (_, live_service) in &self.live_services {
                     s.spawn(async move {
                         if live_service.get_final_state().await == ServiceState::Up {
                             // TODO: Log
@@ -380,32 +370,14 @@ impl LiveServiceGraph {
         &self,
         name: &str,
     ) -> Result<&LiveService> {
-        if self.indexes.contains_key(name) {
-            Ok(self._get_service(name))
+        if self.live_services.contains_key(name) {
+            Ok(&self.live_services[name])
         } else {
             ServiceNotFoundSnafu {
                 service: name.to_string(),
             }
             .fail()?
         }
-    }
-
-    fn _get_service(
-        &self,
-        name: &str,
-    ) -> &LiveService {
-        self.live_services
-            .get(*self.indexes.get(name).expect("This should never happen"))
-            .unwrap()
-    }
-
-    pub fn get_mut_service(
-        &mut self,
-        name: &str,
-    ) -> &mut LiveService {
-        self.live_services
-            .get_mut(*self.indexes.get(name).expect("This should never happen"))
-            .unwrap()
     }
 
     fn get_dependents(
@@ -417,7 +389,7 @@ impl LiveServiceGraph {
             .dependents
             .iter()
             .map(|dependant| -> &LiveService {
-                self.live_services.get(*dependant).unwrap().to_owned()
+                self.live_services.get_index(*dependant).unwrap().1
             })
             .collect()
     }
@@ -473,7 +445,7 @@ impl LiveServiceGraph {
         // swap_remove means that we invalidate these indexes. swap_remove cost
         // O(1) and remove O(n) making it worth all the hashmap access
         let mut services: HashMap<String, (bool, bool)> = HashMap::new();
-        for service in &self.indexes {
+        for service in &self.live_services {
             services.insert(service.0.clone(), (true, false));
         }
 
@@ -488,45 +460,39 @@ impl LiveServiceGraph {
         // Reserve memory for new services in advance, do not panic on memory allocation
         // fail
         self.live_services
-            .try_reserve_exact(services.iter().filter(|(_, (_, right))| *right).count())
-            .with_context(|_| TryReserveSnafu)?;
+            .reserve(services.iter().filter(|(_, (_, right))| *right).count());
         let mut index = self.live_services.len();
         for service in services {
             let name = service.0;
             match service.1 {
                 // There is a new service, add it to the graph without starting it
                 (false, true) => {
-                    self.live_services.push(LiveService::new(
-                        dep_graph.nodes.swap_remove(&name).unwrap(),
-                    ));
-                    self.indexes.insert(name, index);
+                    let new = LiveService::new(dep_graph.nodes.swap_remove(&name).unwrap());
+                    self.live_services.insert(name, new);
                     index = index + 1;
                 }
                 // This service is only the live state and not in the new dependency graph
                 // mark it for removal
                 (true, false) => {
-                    let existing = self.indexes[&name];
-                    self.live_services[existing].remove = true;
+                    self.live_services[&name].remove = true;
                 }
                 // This service is in both graph, update it now/later
                 (true, true) => {
-                    let existing = self.indexes[&name];
-
                     let new_live_service =
                         LiveService::new(dep_graph.nodes.swap_remove(&name).unwrap());
-                    let state = *self.live_services[existing].state.borrow();
+                    let state = *self.live_services[&name].state.borrow();
                     match state {
                         // If a service is already down or in reset state, just update it with
                         // the new one
                         ServiceState::Reset | ServiceState::Down => {
                             new_live_service.update_state(state);
-                            self.live_services[existing] = new_live_service;
+                            self.live_services[&name] = new_live_service;
                             // Keep the current state
                         }
                         // otherwise, mark it for update. It will be updated by
                         // update_service_state
                         ServiceState::Up | ServiceState::Starting | ServiceState::Stopping => {
-                            self.live_services[existing].new = Some(Box::new(new_live_service));
+                            self.live_services[&name].new = Some(Box::new(new_live_service));
                         }
                     }
                 }
@@ -552,40 +518,25 @@ impl LiveServiceGraph {
         &mut self,
         name: &str,
     ) -> Result<()> {
-        let index = *self.indexes.get(name).with_context(|| {
+        let live_service = &*self.live_services.get(name).with_context(|| {
             ServiceNotFoundSnafu {
                 service: name.to_string(),
             }
         })?;
 
-        let live_service = &self.live_services[index];
         // the service is marked for removal
         if live_service.remove {
-            // remove the name from the indexes
-            self.indexes.remove(&live_service.node.name().to_string());
             // drop the reference to self.live_services, so that we can borrow mut
             drop(live_service);
             // remove in O(1)
-            self.live_services.swap_remove(index);
-            // Update index of the swapped service
-            self.indexes
-                .insert(self.live_services[index].node.name().to_string(), index);
+            self.live_services.swap_remove(name);
         // There is a new version of this service
         } else if live_service.new.is_some() {
-            let live_service = self.live_services.swap_remove(index);
-            // swap_remove directly removes the item when it is the last
-            // check this occurence
-            if index != self.live_services.len() {
-                self.indexes
-                    .insert(self.live_services[index].node.name().to_string(), index);
-                self.indexes.insert(
-                    live_service.node.name().to_string(),
-                    self.live_services.len(),
-                );
-            }
+            let live_service = self.live_services.swap_remove(name).unwrap();
             let new_live_service = live_service.new.unwrap();
             new_live_service.update_state(ServiceState::Down);
-            self.live_services.push(*new_live_service);
+            self.live_services
+                .insert(name.to_string(), *new_live_service);
         }
         Ok(())
     }

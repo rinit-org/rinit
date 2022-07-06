@@ -11,6 +11,7 @@ anyhow = { version = "1.0.58", default_features = false }
 async-pidfd = "0.1.4"
 async-recursion = "1.0.0"
 async-scoped-local = { git = "https://github.com/rinit-org/async-scoped-local", features = [ "use-tokio" ] }
+indexmap = "1.9.1"
 lexopt = "0.2.0"
 futures = "0.3.21"
 lazy_static = "1.4.0"
