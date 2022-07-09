@@ -469,7 +469,7 @@ impl LiveServiceGraph {
                 (false, true) => {
                     let new = LiveService::new(dep_graph.nodes.swap_remove(&name).unwrap());
                     self.live_services.insert(name, new);
-                    index = index + 1;
+                    index += index;
                 }
                 // This service is only the live state and not in the new dependency graph
                 // mark it for removal
@@ -518,7 +518,7 @@ impl LiveServiceGraph {
         &mut self,
         name: &str,
     ) -> Result<()> {
-        let live_service = &*self.live_services.get(name).with_context(|| {
+        let live_service = self.live_services.get(name).with_context(|| {
             ServiceNotFoundSnafu {
                 service: name.to_string(),
             }
@@ -526,8 +526,6 @@ impl LiveServiceGraph {
 
         // the service is marked for removal
         if live_service.remove {
-            // drop the reference to self.live_services, so that we can borrow mut
-            drop(live_service);
             // remove in O(1)
             self.live_services.swap_remove(name);
         // There is a new version of this service
