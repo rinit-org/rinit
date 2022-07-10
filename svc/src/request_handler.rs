@@ -15,6 +15,7 @@ use tokio::{
     sync::RwLock,
     task,
 };
+use tracing::info;
 
 use crate::{
     live_service::LiveService,
@@ -85,8 +86,10 @@ impl RequestHandler {
         Ok(match request {
             Request::ServiceIsUp(name, up) => {
                 let new_state = if up {
+                    info!("Service {name} is up");
                     ServiceState::Up
                 } else {
+                    info!("Service {name} is down");
                     ServiceState::Down
                 };
                 graph.update_service_state(&name, new_state)?;
