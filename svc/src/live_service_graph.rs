@@ -44,6 +44,7 @@ use tokio::{
     process::Command,
 };
 use tokio_stream::StreamExt;
+use tracing::trace;
 
 use crate::live_service::LiveService;
 
@@ -197,6 +198,7 @@ impl LiveServiceGraph {
         // Check that the service is not already starting
         // or is already up. Some other task could have done so while awaiting above
         if state != ServiceState::Starting && state != ServiceState::Up {
+            trace!("starting service {}", live_service.node.name());
             live_service.state.replace(ServiceState::Starting);
             self.start_dependencies(live_service).await?;
             self.start_service_impl(live_service).await?;
@@ -208,6 +210,7 @@ impl LiveServiceGraph {
                 service: live_service.node.name().to_string(),
             },
         );
+        trace!("service {} is {}", live_service.node.name(), state);
         Ok(())
     }
 
@@ -244,7 +247,9 @@ impl LiveServiceGraph {
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
+        trace!("waiting for dependencies of {}", live_service.node.name());
         self.wait_on_deps_starting(live_service).await?;
+        trace!("dependencies of {} started", live_service.node.name());
         let res = match &live_service.node.service {
             Service::Oneshot(_) => Some("--oneshot=start"),
             Service::Longrun(_) => Some("--longrun=start"),
@@ -253,6 +258,7 @@ impl LiveServiceGraph {
         };
         if let Some(supervise) = res {
             // TODO: Add logging and remove unwrap
+            trace!("starting rsupervision for {}", live_service.node.name());
             let child = loop {
                 let res = Command::new("rsupervision")
                     .args(vec![
@@ -271,6 +277,7 @@ impl LiveServiceGraph {
                     Err(err) => return Err(SpawnSnafu.into_error(err).into()),
                 }
             };
+            trace!("rsupervision for {} started", live_service.node.name());
 
             live_service.pidfd.replace(Some(
                 AsyncFd::new(PidFd::from_pid(child.id().unwrap() as i32).unwrap()).unwrap(),
