@@ -23,13 +23,13 @@ This project was initially written in C++ and called [tt](https://github.com/dan
 - Target desktop and servers
 - Conditional dependencies for supporting various scenarios
 - Provide sane defaults
-- Provide user services to other init/service managers
+- Provide user services to other init
 
 ## Getting started
 
 ### Build
 
-_rinit_ only requires the rust compiler to build, it has no dependency.
+_rinit_ only requires the nightly rust compiler to build, it has no dependency.
 
 To build the project:
 
@@ -39,18 +39,16 @@ $ cargo build --release
 
 ### Install
 
-_rinit_ is composed by 2 binaries: `rctl` and `rinstall`.
+_rinit_ is composed by 3 binaries: `rctl`, `rsvc` and `rsupervision`.
 
-#### rinstall
-
-Follow usage instructions in rinstall documentation
+It can be easily installed via *rinstall*. Follow usage instructions in rinstall documentation
 [here](https://github.com/danyspin97/rinstall#usage).
 
 ### Services
 
 _rinit_ requires services files to know what should run and how. These services can be provided
 by your distribution, a project developer or a third party. _rinit_ provides a set of
-services available and always up-to-date [here](https://github.com/rinit-org/rinit).
+services available and always up-to-date [here](https://github.com/rinit-org/rinit-services).
 
 ## Usage
 
@@ -122,13 +120,20 @@ _rinit_ works in three different modes:
 The command line interface is the same for each mode. The only difference is whom the service
 affects and the directory used for the configuration.
 
-All three of them requires to have `rctl` and `rsvc` into your `PATH`.
-
-Currently the only tested mode is the _user mode_.
+All three of them requires to have `rsupervision` into your `PATH`. Please note that the Rust
+function that is used to spawn `rsupervision` **doesn't support tilde expanding `~/` in `PATH`**.
 
 ### User mode
 
-After having one or more services enabled in _rinit_, run `rsvc` as your current user.
+After having one or more services enabled in _rinit_, run `rsvc` as your current user. rinit
+in user mode can be used for starting graphical daemons (like `polybar` or `waybar`), as
+well as a various things, from the complete MPD setup to periodically fetch data from a
+WebDAV server.
+
+Most daemons and services requires environmental variables set at runtime from various programs,
+like the `DBUS_SESSION_BUS_ADDRESS` to the `WAYLAND_DISPLAY`. For this reason it is suggested
+to start `rsvc` after the compositor/window manager has started, via `.xstartrc` or
+by using the autostart feature of your Desktop/window manager.
 
 ## License
 
