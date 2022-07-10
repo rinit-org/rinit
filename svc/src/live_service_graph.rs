@@ -395,9 +395,7 @@ impl LiveServiceGraph {
             .node
             .dependents
             .iter()
-            .map(|dependant| -> &LiveService {
-                self.live_services.get_index(*dependant).unwrap().1
-            })
+            .map(|dependant| &self.live_services[dependant])
             .collect()
     }
 

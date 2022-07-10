@@ -102,7 +102,10 @@ impl DependencyGraph {
             self.enabled_services.insert(index);
             let dependencies = self.nodes[index].service.dependencies().to_owned();
             for dep in dependencies {
-                self.nodes.get_mut(&dep).unwrap().add_dependent(index);
+                self.nodes
+                    .get_mut(&dep)
+                    .unwrap()
+                    .add_dependent(service.to_string());
             }
         });
 
@@ -140,19 +143,17 @@ impl DependencyGraph {
         services
             .into_iter()
             .map(|new_service| -> bool {
-                let (service_index, _, node) = self.nodes.get_full(new_service.name()).unwrap();
+                let (service_index, name, node) = self.nodes.get_full(new_service.name()).unwrap();
                 let existing_service = &node.service;
                 if existing_service == &new_service {
                     return false;
                 }
 
+                let name = name.clone();
                 // Remove all instances of this service from Node::dependents
                 let dependencies = existing_service.dependencies().to_owned();
                 for dep in dependencies {
-                    self.nodes
-                        .get_mut(&dep)
-                        .unwrap()
-                        .remove_dependent(service_index);
+                    self.nodes.get_mut(&dep).unwrap().remove_dependent(&name);
                 }
                 self.nodes
                     .insert(new_service.name().to_string(), Node::new(new_service));
@@ -167,12 +168,13 @@ impl DependencyGraph {
         services_index: &[usize],
     ) {
         services_index.iter().for_each(|index| {
-            let (_, node) = self.nodes.get_index(*index).unwrap();
+            let (name, node) = self.nodes.get_index(*index).unwrap();
+            let name = name.clone();
             node.service
                 .dependencies()
                 .to_owned()
                 .iter()
-                .for_each(|dep| self.nodes.get_mut(dep).unwrap().add_dependent(*index));
+                .for_each(|dep| self.nodes.get_mut(dep).unwrap().add_dependent(name.clone()));
         });
     }
 
@@ -280,7 +282,7 @@ impl DependencyGraph {
             .iter()
             .for_each(|dep| {
                 let dep_index = self.nodes.get_index_of(dep).unwrap();
-                self.nodes[dep_index].remove_dependent(index);
+                self.nodes[dep_index].remove_dependent(&name);
                 if !self.is_node_required(dep_index) {
                     self.remove_node(dep_index)
                 }

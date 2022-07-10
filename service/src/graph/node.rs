@@ -18,9 +18,9 @@ pub struct Node {
     #[serde(flatten)]
     pub service: Service,
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
-    pub dependents: HashSet<usize>,
+    pub dependents: HashSet<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    providers: HashMap<usize, Provider>,
+    providers: HashMap<String, Provider>,
 }
 
 impl Node {
@@ -38,18 +38,16 @@ impl Node {
 
     pub fn add_dependent(
         &mut self,
-        dependent: usize,
+        dependent: String,
     ) {
-        if !self.dependents.contains(&dependent) {
-            self.dependents.insert(dependent);
-        }
+        self.dependents.insert(dependent);
     }
 
     pub fn remove_dependent(
         &mut self,
-        dependent: usize,
+        dependent: &str,
     ) {
-        self.dependents.remove(&dependent);
+        self.dependents.remove(dependent);
     }
 
     pub fn has_dependents(&self) -> bool {
