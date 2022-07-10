@@ -5,3 +5,4 @@ pkgs:
     exe:
       - rctl
       - rsvc
+      - rsupervision
