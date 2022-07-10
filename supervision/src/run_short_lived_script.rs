@@ -21,6 +21,7 @@ use tokio::{
     },
     time::timeout,
 };
+use tracing::warn;
 
 use crate::{
     exec_script,
@@ -65,7 +66,17 @@ where
         let script_res = select! {
             timeout_res = timeout(script_timeout, pidfd.readable()) => {
                 if timeout_res.is_ok() {
-                    ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
+                    ScriptResult::Exited(match pidfd.get_ref().wait().context("unable to call waitid on child process") {
+                        Ok(wait) => wait.status(),
+                        Err(err) => {
+                            warn!("{err}");
+        time_tried += 1;
+        if time_tried == script.max_deaths {
+            break false;
+        }
+                            continue
+                        },
+                    })
                 } else {
                     ScriptResult::TimedOut
                 }

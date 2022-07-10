@@ -153,20 +153,29 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
         let request = Request::ServiceIsUp(longrun.name.clone(), true);
         // TODO: handle this
         conn.send_request(request).await??;
-        let res = supervise(&running_script.pidfd, signal_wait_fun()).await?;
-        match res {
-            ScriptResult::SignalReceived => {
-                // stop running
-                kill_process(
-                    &running_script.pidfd,
-                    longrun.run.down_signal,
-                    longrun.run.timeout_kill,
-                )
-                .await?;
+        let res = supervise(&running_script.pidfd, signal_wait_fun()).await;
+        let res = match res {
+            Ok(res) => {
+                match res {
+                    ScriptResult::SignalReceived => {
+                        // stop running
+                        kill_process(
+                            &running_script.pidfd,
+                            longrun.run.down_signal,
+                            longrun.run.timeout_kill,
+                        )
+                        .await?;
+                    }
+                    ScriptResult::Exited(status) => warn!("process exited with status: {status}"),
+                    ScriptResult::Running(_) => unreachable!(),
+                }
+                Some(res)
             }
-            ScriptResult::Exited(status) => warn!("process exited with status: {status}"),
-            ScriptResult::Running(_) => unreachable!(),
-        }
+            Err(err) => {
+                warn!("{err}");
+                None
+            }
+        };
         // Notify that it stopped
         let request = Request::ServiceIsUp(longrun.name.clone(), false);
         // TODO: handle this
@@ -175,7 +184,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
             running_script.logger_stop.send(()).unwrap();
         }
         running_script.logger.await??;
-        if matches!(res, ScriptResult::SignalReceived) {
+        if let Some(res) = res && matches!(res, ScriptResult::SignalReceived) {
             break;
         }
     }
