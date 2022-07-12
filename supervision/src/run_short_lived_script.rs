@@ -70,10 +70,10 @@ where
                         Ok(wait) => wait.status(),
                         Err(err) => {
                             warn!("{err}");
-        time_tried += 1;
-        if time_tried == script.max_deaths {
-            break false;
-        }
+                            time_tried += 1;
+                            if time_tried == script.max_deaths {
+                                break false;
+                            }
                             continue
                         },
                     })
