@@ -65,14 +65,14 @@ impl SectionBuilder for ServiceOptionsBuilder {
             .map_or(Ok(RunLevel::default()), |s| RunLevel::from_str(&s))
             .with_context(|_| RunLevelParseSnafu);
         self.options = Some(autostart.and_then(|autostart| {
-            runlevel.and_then(|runlevel| {
-                Ok(ServiceOptions {
+            runlevel.map(|runlevel| {
+                ServiceOptions {
                     dependencies,
                     requires,
                     requires_one,
                     autostart,
                     runlevel,
-                })
+                }
             })
         }));
     }
