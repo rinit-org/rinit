@@ -17,7 +17,7 @@ use super::SectionBuilder;
 
 #[derive(Snafu, Debug)]
 pub enum BundleOptionsBuilderError {
-    #[snafu(display("LOL"))]
+    #[snafu(display("empty contents found"))]
     EmptyContents,
     #[snafu(display("{source}"))]
     RunLevelParseError { source: RunLevelParseError },
