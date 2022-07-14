@@ -5,6 +5,7 @@ use std::{
 
 use rinit_service::types::{
     RunLevel,
+    RunLevelParseError,
     ServiceOptions,
 };
 use snafu::{
@@ -18,8 +19,8 @@ use super::SectionBuilder;
 pub enum ServiceOptionsBuilderError {
     #[snafu(display("{} must be either 'yes' or 'no'", key))]
     InvalidBoolean { key: String },
-    #[snafu(display("runlevel value is not correct"))]
-    RunLevelParseError,
+    #[snafu(display("{source}"))]
+    RunLevelParseError { source: RunLevelParseError },
 }
 
 pub struct ServiceOptionsBuilder {

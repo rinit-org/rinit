@@ -44,9 +44,9 @@ impl Service {
 
     pub fn runlevel(&self) -> RunLevel {
         match &self {
-            Service::Bundle(bundle) => bundle.options.runlevel.clone(),
-            Service::Longrun(longrun) => longrun.options.runlevel.clone(),
-            Service::Oneshot(oneshot) => oneshot.options.runlevel.clone(),
+            Service::Bundle(bundle) => bundle.options.runlevel,
+            Service::Longrun(longrun) => longrun.options.runlevel,
+            Service::Oneshot(oneshot) => oneshot.options.runlevel,
             Service::Virtual(_) => unimplemented!(),
         }
     }

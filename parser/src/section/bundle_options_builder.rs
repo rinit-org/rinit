@@ -6,6 +6,7 @@ use std::{
 use rinit_service::types::{
     BundleOptions,
     RunLevel,
+    RunLevelParseError,
 };
 use snafu::{
     ResultExt,
@@ -18,8 +19,8 @@ use super::SectionBuilder;
 pub enum BundleOptionsBuilderError {
     #[snafu(display("LOL"))]
     EmptyContents,
-    #[snafu(display("runlevel value is not correct"))]
-    RunLevelParseError,
+    #[snafu(display("{source}"))]
+    RunLevelParseError { source: RunLevelParseError },
 }
 
 pub struct BundleOptionsBuilder {
