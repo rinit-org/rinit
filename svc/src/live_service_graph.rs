@@ -23,6 +23,7 @@ use rinit_ipc::request_error::{
     DependentsStillRunningSnafu,
     LogicError,
     RequestError,
+    RunLevelMustMatchSnafu,
     ServiceFailedToStartSnafu,
     ServiceNotFoundSnafu,
 };
@@ -30,7 +31,10 @@ use rinit_service::{
     config::Config,
     graph::DependencyGraph,
     service_state::ServiceState,
-    types::Service,
+    types::{
+        RunLevel,
+        Service,
+    },
 };
 use snafu::{
     ensure,
@@ -152,7 +156,10 @@ impl LiveServiceGraph {
         })
     }
 
-    pub async fn start_all_services(&self) -> Vec<Result<()>> {
+    pub async fn start_all_services(
+        &self,
+        runlevel: RunLevel,
+    ) -> Vec<Result<()>> {
         // This is unsafe because the futures may outlive the current scope
         // We wait on them afterwards and we know that self will outlive them
         // so it's safe to use it
@@ -160,7 +167,9 @@ impl LiveServiceGraph {
             TokioScope::scope_and_collect(|s| {
                 self.live_services.iter().for_each(|(_, live_service)| {
                     s.spawn(async move {
-                        if live_service.node.service.should_start() {
+                        if live_service.node.service.should_start()
+                            && live_service.node.service.runlevel() == runlevel
+                        {
                             // TODO: Generate an order of the services to start and use
                             // start_service_impl
                             self.start_service(live_service).await
@@ -351,7 +360,10 @@ impl LiveServiceGraph {
         Ok(())
     }
 
-    pub async fn stop_all_services(&self) {
+    pub async fn stop_all_services(
+        &self,
+        runlevel: RunLevel,
+    ) {
         // This is unsafe because the futures may outlive the current scope
         // We wait on them afterwards and we know that self will outlive them
         // so it's safe to use it
@@ -359,7 +371,9 @@ impl LiveServiceGraph {
             TokioScope::scope_and_collect(|s| {
                 for (_, live_service) in &self.live_services {
                     s.spawn(async move {
-                        if live_service.get_final_state().await == ServiceState::Up {
+                        if live_service.node.service.runlevel() == runlevel
+                            && live_service.get_final_state().await == ServiceState::Up
+                        {
                             // TODO: Log
                             self.stop_service(live_service).await.unwrap();
                         }
@@ -541,6 +555,19 @@ impl LiveServiceGraph {
             self.live_services
                 .insert(name.to_string(), *new_live_service);
         }
+        Ok(())
+    }
+
+    pub fn check_runlevel(
+        &self,
+        name: &str,
+        runlevel: RunLevel,
+    ) -> Result<()> {
+        ensure!(
+            self.get_service(name)?.node.service.runlevel() == runlevel,
+            RunLevelMustMatchSnafu { service: name }
+        );
+
         Ok(())
     }
 }

@@ -21,7 +21,10 @@ use lexopt::prelude::{
 use live_service_graph::LiveServiceGraph;
 use request_handler::RequestHandler;
 use rinit_ipc::Request;
-use rinit_service::config::Config;
+use rinit_service::{
+    config::Config,
+    types::RunLevel,
+};
 use tokio::{
     fs,
     net::UnixListener,
@@ -123,7 +126,17 @@ async fn main() -> Result<()> {
 
             let handler_clone = handler.clone();
             let mut handles = vec![task::spawn_local(async move {
-                if let Err(err) = handler_clone.handle(Request::StartAllServices).await {
+                if let Err(err) = handler_clone
+                    .handle(Request::StartAllServices(RunLevel::Boot))
+                    .await
+                {
+                    error!("{err}");
+                }
+
+                if let Err(err) = handler_clone
+                    .handle(Request::StartAllServices(RunLevel::Default))
+                    .await
+                {
                     error!("{err}");
                 }
             })];

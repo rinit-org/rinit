@@ -10,7 +10,10 @@ use rinit_ipc::{
     AsyncConnection,
     Request,
 };
-use rinit_service::graph::DependencyGraph;
+use rinit_service::{
+    graph::DependencyGraph,
+    types::RunLevel,
+};
 
 use crate::Config;
 
@@ -19,6 +22,8 @@ pub struct DisableCommand {
     services: Vec<String>,
     #[clap(long = "atomic-changes")]
     pub atomic_changes: bool,
+    #[clap(long, default_value_t)]
+    runlevel: RunLevel,
 }
 
 impl DisableCommand {
@@ -42,6 +47,21 @@ impl DisableCommand {
         )
         .context("unable to deserialize the dependency graph")?;
         if self.atomic_changes {
+            for service in &self.services {
+                // Check runlevel of all services to disable
+                // same as EnableCommand
+                ensure!(
+                    graph
+                        .nodes
+                        .get(service)
+                        .with_context(|| format!("the service {service} is not enabled"))?
+                        .service
+                        .runlevel()
+                        == self.runlevel,
+                    "service {service} must be of the runlevel {:?}",
+                    self.runlevel
+                )
+            }
             graph
                 .disable_services(self.services)
                 .context("unable to remove services in the dependency graph")?;
@@ -51,6 +71,17 @@ impl DisableCommand {
             self.services
                 .into_iter()
                 .try_for_each(|service| -> Result<()> {
+                    ensure!(
+                        graph
+                            .nodes
+                            .get(&service)
+                            .with_context(|| format!("the service {service} is not enabled"))?
+                            .service
+                            .runlevel()
+                            == self.runlevel,
+                        "service {service} must be of the runlevel {:?}",
+                        self.runlevel
+                    );
                     graph
                         .disable_services(vec![service.clone()])
                         .with_context(|| {

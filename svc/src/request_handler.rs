@@ -128,24 +128,26 @@ impl RequestHandler {
                 drop(graph);
                 Reply::ServiceState(service.clone(), state.await)
             }
-            Request::StartService(service) => {
+            Request::StartService { service, runlevel } => {
+                graph.check_runlevel(&service, runlevel)?;
                 graph.start_service(graph.get_service(&service)?).await?;
                 let state = graph.get_service(&service)?.get_final_state();
                 drop(graph);
                 Reply::Success(state.await == ServiceState::Up)
             }
-            Request::StopService(service) => {
+            Request::StopService { service, runlevel } => {
+                graph.check_runlevel(&service, runlevel)?;
                 graph.stop_service(graph.get_service(&service)?).await?;
                 let state = graph.get_service(&service)?.get_final_state();
                 drop(graph);
                 Reply::Success(state.await == ServiceState::Down)
             }
-            Request::StartAllServices => {
-                graph.start_all_services().await;
+            Request::StartAllServices(runlevel) => {
+                graph.start_all_services(runlevel).await;
                 Reply::Empty
             }
-            Request::StopAllServices => {
-                graph.stop_all_services().await;
+            Request::StopAllServices(runlevel) => {
+                graph.stop_all_services(runlevel).await;
                 Reply::Empty
             }
             Request::ReloadGraph => {

@@ -8,11 +8,14 @@ use rinit_ipc::{
     Reply,
     Request,
 };
+use rinit_service::types::RunLevel;
 
 use crate::Config;
 
 #[derive(Parser)]
 pub struct StartCommand {
+    #[clap(long, default_value_t)]
+    runlevel: RunLevel,
     services: Vec<String>,
 }
 
@@ -30,7 +33,10 @@ impl StartCommand {
         let mut conn = AsyncConnection::new_host_address().await?;
         let mut error = false;
         for service in self.services {
-            let request = Request::StartService(service.clone());
+            let request = Request::StartService {
+                service: service.clone(),
+                runlevel: self.runlevel,
+            };
             let res = conn.send_request(request).await?;
 
             match res {

@@ -24,6 +24,8 @@ pub enum LogicError {
     },
     #[snafu(display("dependency graph not found in path {path}"))]
     DependencyGraphNotFound { path: String },
+    #[snafu(display("service {service} has a different runlevel then the one requested"))]
+    RunLevelMustMatch { service: String },
     #[snafu(display("service {service} failed to start"))]
     ServiceFailedToStart { service: String },
     #[snafu(display("service {service} does not exists"))]

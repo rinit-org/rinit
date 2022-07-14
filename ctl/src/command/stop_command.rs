@@ -14,11 +14,14 @@ use rinit_ipc::{
     Reply,
     Request,
 };
+use rinit_service::types::RunLevel;
 
 use crate::Config;
 
 #[derive(Parser)]
 pub struct StopCommand {
+    #[clap(long, default_value_t)]
+    runlevel: RunLevel,
     services: Vec<String>,
 }
 
@@ -40,7 +43,10 @@ impl StopCommand {
                 .map(|service| (service, conn.clone())),
         )
         .map(async move |(service, conn)| -> Result<()> {
-            let request = Request::StopService(service.clone());
+            let request = Request::StopService {
+                service: service.clone(),
+                runlevel: self.runlevel,
+            };
             let res = conn.borrow_mut().send_request(request).await?;
 
             match res {

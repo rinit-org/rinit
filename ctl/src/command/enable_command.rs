@@ -11,7 +11,10 @@ use rinit_ipc::{
     Request,
 };
 use rinit_parser::parse_services;
-use rinit_service::graph::DependencyGraph;
+use rinit_service::{
+    graph::DependencyGraph,
+    types::RunLevel,
+};
 
 use crate::Config;
 
@@ -21,6 +24,8 @@ pub struct EnableCommand {
     services: Vec<String>,
     #[clap(long = "atomic-changes")]
     pub atomic_changes: bool,
+    #[clap(long, default_value_t)]
+    runlevel: RunLevel,
 }
 
 impl EnableCommand {
@@ -51,6 +56,23 @@ impl EnableCommand {
                 config.system,
             )
             .context("unable to parse services")?;
+            // The dependency graph ensure that all the dependencies have the same runlevel
+            // So we just check that we the services passed on the command line are the
+            // same runlevel requested
+            ensure!(
+                services
+                    .iter()
+                    .filter(|service| self.services.contains(&service.name().to_string()))
+                    .all(|service| service.runlevel() == self.runlevel),
+                "service {} must be of the runlevel {:?}",
+                services
+                    .iter()
+                    .filter(|service| self.services.contains(&service.name().to_string()))
+                    .find(|service| service.runlevel() != self.runlevel)
+                    .unwrap()
+                    .name(),
+                self.runlevel
+            );
             graph
                 .add_services(self.services, services)
                 .context("unable to add the parsed services to the dependency graph")?;
@@ -66,6 +88,16 @@ impl EnableCommand {
                 .with_context(|| {
                     format!("unable to parse service {service} and its dependencies")
                 })?;
+                ensure!(
+                    services
+                        .iter()
+                        .find(|s| service == s.name())
+                        .unwrap()
+                        .runlevel()
+                        == self.runlevel,
+                    "service {service} must be of the runlevel {:?}",
+                    self.runlevel
+                );
                 graph
                     .add_services(vec![service.clone()], services)
                     .with_context(|| {
