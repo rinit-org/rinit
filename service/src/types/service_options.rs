@@ -3,6 +3,8 @@ use serde::{
     Serialize,
 };
 
+use super::RunLevel;
+
 /// Store options for Longrun and Oneshot
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ServiceOptions {
@@ -17,6 +19,8 @@ pub struct ServiceOptions {
         skip_serializing_if = "ServiceOptions::is_default_autostart"
     )]
     pub autostart: bool,
+    #[serde(default, skip_serializing_if = "RunLevel::is_default")]
+    pub runlevel: RunLevel,
 }
 
 impl ServiceOptions {
@@ -26,6 +30,7 @@ impl ServiceOptions {
             requires: Vec::new(),
             requires_one: Vec::new(),
             autostart: Self::default_autostart(),
+            runlevel: RunLevel::Default,
         }
     }
 

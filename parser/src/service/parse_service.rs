@@ -136,7 +136,8 @@ mod test {
             Service::Bundle(Bundle {
                 name: "foo".to_string(),
                 options: BundleOptions {
-                    contents: vec!["bar".to_string()]
+                    contents: vec!["bar".to_string()],
+                    runlevel: RunLevel::Default
                 }
             }),
             parse_service(

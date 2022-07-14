@@ -1,7 +1,16 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
-use rinit_service::types::BundleOptions;
-use snafu::Snafu;
+use rinit_service::types::{
+    BundleOptions,
+    RunLevel,
+};
+use snafu::{
+    ResultExt,
+    Snafu,
+};
 
 use super::SectionBuilder;
 
@@ -9,6 +18,8 @@ use super::SectionBuilder;
 pub enum BundleOptionsBuilderError {
     #[snafu(display("LOL"))]
     EmptyContents,
+    #[snafu(display("runlevel value is not correct"))]
+    RunLevelParseError,
 }
 
 pub struct BundleOptionsBuilder {
@@ -28,17 +39,19 @@ impl BundleOptionsBuilder {
 impl SectionBuilder for BundleOptionsBuilder {
     fn build(
         &mut self,
-        _values: &mut HashMap<&'static str, String>,
+        values: &mut HashMap<&'static str, String>,
         array_values: &mut HashMap<&'static str, Vec<String>>,
         _code_values: &mut HashMap<&'static str, String>,
     ) {
         let contents = array_values.remove("contents");
+        let runlevel = values
+            .remove("runlevel")
+            .map_or(Ok(RunLevel::default()), |s| RunLevel::from_str(&s))
+            .with_context(|_| RunLevelParseSnafu);
         self.bundle_options = Some(
-            if let Some(contents) = contents {
-                Ok(BundleOptions { contents })
-            } else {
-                Err(BundleOptionsBuilderError::EmptyContents {})
-            },
+            contents.map_or(Err(BundleOptionsBuilderError::EmptyContents), |contents| {
+                runlevel.map(|runlevel| BundleOptions { contents, runlevel })
+            }),
         );
     }
 

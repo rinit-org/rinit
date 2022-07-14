@@ -21,10 +21,14 @@ use crate::{
 
 #[derive(Debug, Snafu, PartialEq, Eq)]
 pub enum DependencyGraphError {
-    #[snafu(display("the dependency {} of service {} is missing", dependency, service))]
-    DependenciesUnfulfilledError { service: String, dependency: String },
     #[snafu(display("found a cycle in the dependency graph"))]
     CycleFoundError,
+    #[snafu(display(
+        "service {service} does not have the same runlevel as its dependency {dependency}"
+    ))]
+    DependenciesMustHaveSameRunLevel { service: String, dependency: String },
+    #[snafu(display("the dependency {} of service {} is missing", dependency, service))]
+    DependenciesUnfulfilledError { service: String, dependency: String },
     #[snafu(display("service {} is not enabled", service))]
     ServiceNotEnabled { service: String },
     #[snafu(display("service {service} is already enabled"))]
@@ -186,6 +190,7 @@ impl DependencyGraph {
             .values()
             .skip(from)
             .try_for_each(|node| -> Result<()> {
+                let runlevel = node.service.runlevel();
                 node.service
                     .dependencies()
                     .iter()
@@ -197,6 +202,12 @@ impl DependencyGraph {
                                 dependency: dep.to_owned()
                             }
                         );
+                        ensure!(
+                            self.nodes.get(dep).unwrap().service.runlevel() == runlevel,
+                            DependenciesMustHaveSameRunLevelSnafu {
+                                service: node.name(),
+                                dependency: dep
+                            });
                         Ok(())
                     })
             })?;
@@ -492,5 +503,35 @@ mod test {
 
         graph.disable_services(vec!["foo".to_string()]).unwrap();
         assert_eq!(graph.nodes.len(), 0);
+    }
+
+    #[test]
+    fn services_with_different_runlevel() {
+        let mut graph = DependencyGraph::new();
+
+        assert_eq!(
+            graph
+                .add_services(
+                    vec!["foo".to_string()],
+                    vec![
+                        create_new_service("foo", {
+                            let mut options = ServiceOptions::new();
+                            options.dependencies = vec!["bar".to_string()];
+                            options
+                        }),
+                        create_new_service("bar", {
+                            use crate::types::RunLevel;
+                            let mut options = ServiceOptions::new();
+                            options.runlevel = RunLevel::Boot;
+                            options
+                        }),
+                    ],
+                )
+                .unwrap_err(),
+            DependencyGraphError::DependenciesMustHaveSameRunLevel {
+                service: "foo".to_string(),
+                dependency: "bar".to_string()
+            }
+        );
     }
 }

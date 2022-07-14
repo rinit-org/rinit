@@ -1,6 +1,12 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    str::FromStr,
+};
 
-use rinit_service::types::ServiceOptions;
+use rinit_service::types::{
+    RunLevel,
+    ServiceOptions,
+};
 use snafu::{
     ResultExt,
     Snafu,
@@ -12,6 +18,8 @@ use super::SectionBuilder;
 pub enum ServiceOptionsBuilderError {
     #[snafu(display("{} must be either 'yes' or 'no'", key))]
     InvalidBoolean { key: String },
+    #[snafu(display("runlevel value is not correct"))]
+    RunLevelParseError,
 }
 
 pub struct ServiceOptionsBuilder {
@@ -51,13 +59,20 @@ impl SectionBuilder for ServiceOptionsBuilder {
                     key: "autostart".to_string(),
                 }
             });
-        self.options = Some(autostart.map(|autostart| -> ServiceOptions {
-            ServiceOptions {
-                dependencies,
-                requires,
-                requires_one,
-                autostart,
-            }
+        let runlevel = values
+            .remove("runlevel")
+            .map_or(Ok(RunLevel::default()), |s| RunLevel::from_str(&s))
+            .with_context(|_| RunLevelParseSnafu);
+        self.options = Some(autostart.and_then(|autostart| {
+            runlevel.and_then(|runlevel| {
+                Ok(ServiceOptions {
+                    dependencies,
+                    requires,
+                    requires_one,
+                    autostart,
+                    runlevel,
+                })
+            })
         }));
     }
 
