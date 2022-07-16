@@ -557,11 +557,13 @@ impl LiveServiceGraph {
             self.live_services.swap_remove(name);
         // There is a new version of this service
         } else if live_service.new.is_some() {
-            let live_service = self.live_services.swap_remove(name).unwrap();
-            let new_live_service = live_service.new.unwrap();
-            new_live_service.update_state(ServiceState::Idle(IdleServiceState::Down));
-            self.live_services
-                .insert(name.to_string(), *new_live_service);
+            let entry = self.live_services.entry(name.to_string());
+            // Update entry in-place
+            entry.and_modify(|live_service| {
+                let new_live_service = live_service.new.take().unwrap();
+                new_live_service.update_state(ServiceState::Idle(IdleServiceState::Down));
+                *live_service = *new_live_service;
+            });
         }
         Ok(())
     }
