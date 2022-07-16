@@ -504,7 +504,13 @@ impl LiveServiceGraph {
                 // This service is only the live state and not in the new dependency graph
                 // mark it for removal
                 (true, false) => {
-                    self.live_services[&name].remove = true;
+                    let state = *self.live_services[&name].state.borrow();
+                    // If a service is already down, just update it with the new one
+                    if matches!(state, ServiceState::Idle(IdleServiceState::Down)) {
+                        self.live_services.swap_remove(&name);
+                    } else {
+                        self.live_services[&name].remove = true;
+                    }
                 }
                 // This service is in both graph, update it now/later
                 (true, true) => {
