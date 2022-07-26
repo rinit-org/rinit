@@ -9,11 +9,11 @@ rinit-ipc= { path = "../ipc" }
 rinit-parser = { path = "../parser" }
 rinit-service = { path = "../service" }
 anyhow = "1.0.58"
-clap = { version = "3.2.7", features = ["derive"] }
+clap = { version = "3.2.15", features = ["derive"] }
 itertools = "0.10.3"
 futures = "0.3.21"
-serde_json = "1.0.81"
-tokio = "1.19.2"
+serde_json = "1.0.82"
+tokio = "1.20.1"
 
 [[bin]]
 name = "rctl"
