@@ -14,6 +14,15 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 pub use exec_script::exec_script;
+use flexi_logger::{
+    writers::FileLogWriter,
+    Cleanup,
+    Criterion,
+    FileSpec,
+    LogSpecification,
+    Naming,
+    WriteMode,
+};
 pub use kill_process::kill_process;
 use lexopt::{
     prelude::Long,
@@ -29,10 +38,8 @@ pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
-use tracing::{
-    error,
-    metadata::LevelFilter,
-};
+use tracing::error;
+use tracing_subscriber::FmtSubscriber;
 
 #[macro_use]
 extern crate lazy_static;
@@ -95,38 +102,37 @@ async fn main() -> Result<()> {
     let service: Service = serde_json::from_str(&args.service)?;
 
     // Setup logging
-    use tracing_error::ErrorLayer;
-    use tracing_subscriber::{
-        fmt,
-        prelude::*,
-        EnvFilter,
-    };
+    let (file_writer, _fw_handle) = FileLogWriter::builder(
+        FileSpec::default()
+            .directory(args.logdir.join(service.name()))
+            .basename(service.name()),
+    )
+    .rotate(
+        Criterion::Size(1024 * 512),
+        Naming::Numbers,
+        Cleanup::KeepLogAndCompressedFiles(1, 4),
+    )
+    .append()
+    .write_mode(WriteMode::Async)
+    .try_build_with_handle()
+    .unwrap();
 
-    let file_appender = tracing_appender::rolling::daily(
-        args.logdir.join(service.name()),
-        format!("{}.log", service.name()),
-    );
-    let (service_log_writer, _guard) = tracing_appender::non_blocking(file_appender);
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-    use tracing_subscriber::fmt::format;
-    let stdio_fmt_layer = fmt::layer()
-        .event_format(format())
-        .with_target(false)
-        // Do not write warn and info to stdout, as it's inherited from rsvc
-        .with_filter(LevelFilter::ERROR);
-    let file_fmt_layer = fmt::layer()
-        .with_target(false)
+    let env_filter = LogSpecification::env()?.to_string();
+    let subscriber_builder = FmtSubscriber::builder()
         .with_level(false)
-        .with_writer(service_log_writer);
+        .with_target(false)
+        .with_writer(move || file_writer.clone())
+        .with_env_filter(
+            if env_filter.is_empty() {
+                "info"
+            } else {
+                &env_filter
+            },
+        );
 
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(stdio_fmt_layer)
-        .with(file_fmt_layer)
-        .with(ErrorLayer::default())
-        .init();
+    // Get ready to trace
+    tracing::subscriber::set_global_default(subscriber_builder.finish())
+        .expect("setting default subscriber failed");
 
     let res = match args.service_type {
         ServiceType::Longrun => supervise_long_lived_process(service).await,

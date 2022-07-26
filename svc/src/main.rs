@@ -14,6 +14,15 @@ use std::{
 };
 
 use anyhow::Result;
+use flexi_logger::{
+    writers::FileLogWriter,
+    Cleanup,
+    Criterion,
+    FileSpec,
+    LogSpecification,
+    Naming,
+    WriteMode,
+};
 use lexopt::prelude::{
     Long,
     Short,
@@ -44,6 +53,7 @@ use tracing::{
     error,
     info,
 };
+use tracing_subscriber::FmtSubscriber;
 
 #[macro_use]
 extern crate lazy_static;
@@ -87,28 +97,35 @@ async fn main() -> Result<()> {
     let config = Config::new(config_file)?;
 
     // Setup logging
-    use tracing_error::ErrorLayer;
-    use tracing_subscriber::{
-        fmt,
-        prelude::*,
-        EnvFilter,
-    };
+    let (file_writer, _fw_handle) = FileLogWriter::builder(
+        FileSpec::default()
+            .directory(config.logdir.as_ref().unwrap())
+            .basename("rinit"),
+    )
+    .rotate(
+        Criterion::Size(1024 * 512),
+        Naming::Numbers,
+        Cleanup::KeepLogAndCompressedFiles(1, 4),
+    )
+    .append()
+    .write_mode(WriteMode::Async)
+    .try_build_with_handle()
+    .unwrap();
 
-    let file_appender =
-        tracing_appender::rolling::daily(config.logdir.as_ref().unwrap(), "rinit.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    let fmt_layer = fmt::layer().with_target(false);
-    let file_fmt_layer = fmt::layer().with_target(false).with_writer(non_blocking);
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
+    let env_filter = LogSpecification::env()?.to_string();
+    let subscriber_builder = FmtSubscriber::builder()
+        .with_writer(move || file_writer.clone())
+        .with_env_filter(
+            if env_filter.is_empty() {
+                "info"
+            } else {
+                &env_filter
+            },
+        );
 
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(fmt_layer)
-        .with(file_fmt_layer)
-        .with(ErrorLayer::default())
-        .init();
+    // Get ready to trace
+    tracing::subscriber::set_global_default(subscriber_builder.finish())
+        .expect("setting default subscriber failed");
 
     let local = task::LocalSet::new();
     let live_graph = LiveServiceGraph::new(config)?;
