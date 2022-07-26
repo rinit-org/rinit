@@ -19,7 +19,6 @@ use flexi_logger::{
     Cleanup,
     Criterion,
     FileSpec,
-    LogSpecification,
     Naming,
     WriteMode,
 };
@@ -38,7 +37,10 @@ pub use run_short_lived_script::run_short_lived_script;
 pub use signal_wait::signal_wait;
 pub use supervise_long_lived_process::supervise_long_lived_process;
 pub use supervise_short_lived_process::supervise_short_lived_process;
-use tracing::error;
+use tracing::{
+    error,
+    level_filters::LevelFilter,
+};
 use tracing_subscriber::FmtSubscriber;
 
 #[macro_use]
@@ -110,25 +112,18 @@ async fn main() -> Result<()> {
     .rotate(
         Criterion::Size(1024 * 512),
         Naming::Numbers,
-        Cleanup::KeepLogAndCompressedFiles(1, 4),
+        Cleanup::KeepCompressedFiles(5),
     )
     .append()
     .write_mode(WriteMode::Async)
     .try_build_with_handle()
     .unwrap();
 
-    let env_filter = LogSpecification::env()?.to_string();
     let subscriber_builder = FmtSubscriber::builder()
         .with_level(false)
         .with_target(false)
         .with_writer(move || file_writer.clone())
-        .with_env_filter(
-            if env_filter.is_empty() {
-                "info"
-            } else {
-                &env_filter
-            },
-        );
+        .with_max_level(LevelFilter::INFO);
 
     // Get ready to trace
     tracing::subscriber::set_global_default(subscriber_builder.finish())

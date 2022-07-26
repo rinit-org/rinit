@@ -19,7 +19,6 @@ use flexi_logger::{
     Cleanup,
     Criterion,
     FileSpec,
-    LogSpecification,
     Naming,
     WriteMode,
 };
@@ -52,15 +51,27 @@ use tokio::{
 use tracing::{
     error,
     info,
+    metadata::LevelFilter,
 };
 use tracing_subscriber::FmtSubscriber;
 
 #[macro_use]
 extern crate lazy_static;
 
-fn parse_args() -> Result<Option<PathBuf>, lexopt::Error> {
+struct Args {
+    config: Option<PathBuf>,
+    verbosity: u8,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
     let mut config: Option<PathBuf> = None;
     let mut parser = lexopt::Parser::from_env();
+    // 0 => Error
+    // 1 => Warn
+    // 2 => Info
+    // 3 => Debug
+    // 4 => Trace
+    let mut verbosity = 2;
     while let Some(arg) = parser.next()? {
         match arg {
             Short('c') | Long("config") => {
@@ -70,11 +81,19 @@ fn parse_args() -> Result<Option<PathBuf>, lexopt::Error> {
                 println!("Usage: rsvc [-c|--config=CONFIG]");
                 std::process::exit(0);
             }
+            Short('q') | Long("quiet") => {
+                // quiet set it to Warn
+                verbosity = 1;
+            }
+            Short('v') | Long("verbose") => {
+                // verbose set it to Debug
+                verbosity = 3;
+            }
             _ => return Err(arg.unexpected()),
         }
     }
 
-    Ok(config)
+    Ok(Args { config, verbosity })
 }
 
 lazy_static! {
@@ -93,8 +112,8 @@ pub async fn signal_wait() {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let config_file = parse_args()?;
-    let config = Config::new(config_file)?;
+    let args = parse_args()?;
+    let config = Config::new(args.config)?;
 
     // Setup logging
     let (file_writer, _fw_handle) = FileLogWriter::builder(
@@ -105,23 +124,21 @@ async fn main() -> Result<()> {
     .rotate(
         Criterion::Size(1024 * 512),
         Naming::Numbers,
-        Cleanup::KeepLogAndCompressedFiles(1, 4),
+        Cleanup::KeepCompressedFiles(5),
     )
     .append()
     .write_mode(WriteMode::Async)
     .try_build_with_handle()
     .unwrap();
 
-    let env_filter = LogSpecification::env()?.to_string();
     let subscriber_builder = FmtSubscriber::builder()
         .with_writer(move || file_writer.clone())
-        .with_env_filter(
-            if env_filter.is_empty() {
-                "info"
-            } else {
-                &env_filter
-            },
-        );
+        .with_max_level(match args.verbosity {
+            0 => LevelFilter::ERROR,
+            1 => LevelFilter::WARN,
+            2 => LevelFilter::INFO,
+            3.. => LevelFilter::DEBUG,
+        });
 
     // Get ready to trace
     tracing::subscriber::set_global_default(subscriber_builder.finish())
