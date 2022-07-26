@@ -1,5 +1,4 @@
 #![feature(async_closure)]
-#![feature(let_chains)]
 
 pub mod exec_script;
 pub mod kill_process;
