@@ -21,7 +21,7 @@ nix = "0.24.1"
 remoc = "0.10.0"
 serde_json = "1.0.81"
 snafu = "0.7.1"
-tokio = { version = "1.19.2", features = [ "full" ] }
+tokio = { version = "1.19.2", features = [ "macros" ] }
 tokio-stream = "0.1.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.15" }
