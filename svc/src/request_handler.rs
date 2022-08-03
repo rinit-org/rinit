@@ -44,6 +44,7 @@ impl RequestHandler {
     pub async fn handle_stream(
         &self,
         stream: UnixStream,
+        shutdown: bool,
     ) -> Result<(), ConnectionError> {
         let (socket_rx, socket_tx) = stream.into_split();
         let (conn, mut tx, mut rx): (
@@ -74,14 +75,18 @@ impl RequestHandler {
                     }
                 }
             };
-            let reply = self.handle(request).await;
+            let reply = if shutdown {
+                self.handle_request_shutdown(request).await
+            } else {
+                self.handle_request(request).await
+            };
             tx.send(reply).await?;
         }
 
         Ok(())
     }
 
-    pub async fn handle<'a>(
+    pub async fn handle_request<'a>(
         &self,
         request: Request,
     ) -> Result<Reply, RequestError> {
@@ -159,6 +164,51 @@ impl RequestHandler {
                 graph.reload_dependency_graph().await?;
                 Reply::Empty
             }
+        })
+    }
+
+    pub async fn handle_request_shutdown<'a>(
+        &self,
+        request: Request,
+    ) -> Result<Reply, RequestError> {
+        let graph = self.graph.read().await;
+        Ok(match request {
+            Request::ServiceIsUp(name, up) => {
+                let new_state = if up {
+                    info!("Service {name} is up");
+                    IdleServiceState::Up
+                } else {
+                    info!("Service {name} is down");
+                    IdleServiceState::Down
+                };
+                graph.update_service_state(&name, new_state)?;
+                Reply::Empty
+            }
+            Request::ServicesStatus() => {
+                let services: Vec<Result<&LiveService, LiveGraphError>> = graph
+                    .live_services
+                    .iter()
+                    .map(|(_, live_service)| live_service)
+                    .map(Result::Ok)
+                    .collect();
+                let states = stream::iter(services)
+                    .then(async move |res| {
+                        match res {
+                            Ok(live_service) => {
+                                Ok((
+                                    live_service.node.name().to_owned(),
+                                    *live_service.state.borrow(),
+                                ))
+                            }
+                            Err(err) => Err(err),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .await;
+                Reply::ServicesStates(states.into_iter().collect::<Result<Vec<_>, _>>()?)
+            }
+            // TODO: Error
+            _ => todo!(),
         })
     }
 }

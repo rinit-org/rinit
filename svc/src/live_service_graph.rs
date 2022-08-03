@@ -368,13 +368,28 @@ impl LiveServiceGraph {
         // so it's safe to use it
         let (_res, futures) = unsafe {
             TokioScope::scope_and_collect(|s| {
-                for (_, live_service) in &self.live_services {
+                for (service, live_service) in &self.live_services {
                     s.spawn(async move {
-                        if live_service.node.service.runlevel() == runlevel
-                            && live_service.get_final_state().await == ServiceState::Up
-                        {
-                            // TODO: Log
-                            self.stop_service(live_service).await.unwrap();
+                        if live_service.node.service.runlevel() == runlevel {
+                            let dependents = self.get_dependents(live_service);
+                            for dependent in dependents {
+                                // Wait until the dependent is down
+                                // TODO: Log
+                                while let Ok(state) = dependent.tx.subscribe().recv().await &&
+                                    state == IdleServiceState::Up { }
+                            }
+                            self.stop_service_impl(live_service).await.unwrap();
+
+                            // Self::stop_service only spawn the supervisor, we don't know if the
+                            // service has stopped yet. Get the state of each one
+                            if *live_service.state.borrow()
+                                == ServiceState::Idle(IdleServiceState::Up)
+                            {
+                                if let Ok(state) = live_service.tx.subscribe().recv().await &&
+                                    state == IdleServiceState::Up {
+                                        warn!("service {service} didn't exit successfully");
+                                }
+                            }
                         }
                     });
                 }

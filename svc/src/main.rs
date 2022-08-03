@@ -5,6 +5,7 @@ pub mod live_service_graph;
 pub mod request_handler;
 
 use std::{
+    cell::RefCell,
     path::{
         Path,
         PathBuf,
@@ -12,7 +13,10 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::Result;
+use anyhow::{
+    Context,
+    Result,
+};
 use flexi_logger::{
     writers::FileLogWriter,
     Cleanup,
@@ -26,6 +30,13 @@ use lexopt::prelude::{
     Short,
 };
 use live_service_graph::LiveServiceGraph;
+use nix::{
+    sys::signal::Signal,
+    unistd::{
+        setpgid,
+        Pid,
+    },
+};
 use request_handler::RequestHandler;
 use rinit_ipc::Request;
 use rinit_service::{
@@ -38,16 +49,17 @@ use tokio::{
     select,
     signal::unix::{
         signal,
-        Signal,
         SignalKind,
     },
     sync::Mutex,
     task::{
         self,
+        spawn_local,
         JoinError,
     },
 };
 use tracing::{
+    debug,
     error,
     info,
     metadata::LevelFilter,
@@ -96,17 +108,19 @@ fn parse_args() -> Result<Args, lexopt::Error> {
 }
 
 lazy_static! {
-    static ref SIGINT: Mutex<Signal> = Mutex::new(signal(SignalKind::interrupt()).unwrap());
-    static ref SIGTERM: Mutex<Signal> = Mutex::new(signal(SignalKind::terminate()).unwrap());
+    static ref SIGINT: Mutex<tokio::signal::unix::Signal> =
+        Mutex::new(signal(SignalKind::interrupt()).unwrap());
+    static ref SIGTERM: Mutex<tokio::signal::unix::Signal> =
+        Mutex::new(signal(SignalKind::terminate()).unwrap());
 }
 
-pub async fn signal_wait() {
+pub async fn signal_wait() -> Signal {
     let mut sigint = SIGINT.lock().await;
     let mut sigterm = SIGTERM.lock().await;
     select! {
-        _ = sigint.recv() => {},
-        _ = sigterm.recv() => {},
-    };
+        _ = sigint.recv() => Signal::SIGINT,
+        _ = sigterm.recv() => Signal::SIGTERM,
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -143,6 +157,9 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber_builder.finish())
         .expect("setting default subscriber failed");
 
+    // Create its own process group
+    setpgid(Pid::from_raw(0), Pid::from_raw(0))?;
+
     let local = task::LocalSet::new();
     let live_graph = LiveServiceGraph::new(config)?;
 
@@ -151,59 +168,121 @@ async fn main() -> Result<()> {
         .await
         .unwrap();
 
+    let listener = Rc::new(
+        UnixListener::bind(rinit_ipc::get_host_address()).with_context(|| {
+            format!(
+                "rinit is already running or didn't exit properly. Delete {:?} if needed",
+                rinit_ipc::get_host_address()
+            )
+        })?,
+    );
     local
         .run_until(async move {
-            info!("Starting rinit!");
-            let listener = Rc::new(UnixListener::bind(rinit_ipc::get_host_address()).unwrap());
+            info!("Starting rinit.");
             let handler = Rc::new(RequestHandler::new(live_graph));
+            let handles = Rc::new(RefCell::new(Vec::new()));
 
             let handler_clone = handler.clone();
-            let mut handles = vec![task::spawn_local(async move {
-                if let Err(err) = handler_clone
-                    .handle(Request::StartAllServices(RunLevel::Boot))
-                    .await
-                {
-                    error!("{err}");
-                }
-
-                if let Err(err) = handler_clone
-                    .handle(Request::StartAllServices(RunLevel::Default))
-                    .await
-                {
-                    error!("{err}");
-                }
-            })];
-
-            loop {
-                select! {
-                    // put signal_wait first because we want to stop as soon as
-                    // we receive a termination signal
-                    // this is cancel safe
-                    _ = signal_wait() => {
-                        for handle in handles {
-                            let res: Result<(), JoinError> = handle.await;
-                            res.unwrap();
+            let handles_clone = handles.clone();
+            let listener_clone = listener.clone();
+            let request_handler_future = spawn_local(async move {
+                let handler = handler_clone;
+                let handles = handles_clone;
+                let listener = listener_clone;
+                loop {
+                    let conn = listener.accept().await;
+                    let stream = match conn {
+                        Ok((stream, _addr)) => stream,
+                        Err(err) => {
+                            error!("error while accepting a new connection: {err}");
+                            return;
                         }
-                        break;
-                    }
-                    // this is cancel safe
-                    conn = listener.accept() => {
-                        let stream = match conn {
-                            Ok((stream, _addr)) => stream,
-                            Err(err) => {
-                                error!("error while accepting a new connection: {err}");
-                                return;
-                            },
-                        };
-                        let handler = handler.clone();
-                        handles.push(task::spawn_local(async move {
-                            if let Err(err) = handler.handle_stream(stream).await {
-                                error!("{err}");
-                            }
-                        }));
-                    }
+                    };
+                    let handler = handler.clone();
+                    handles.borrow_mut().push(task::spawn_local(async move {
+                        if let Err(err) = handler.handle_stream(stream, false).await {
+                            error!("{err}");
+                        }
+                    }));
                 }
+            });
+
+            info!("Starting boot services.");
+            if let Err(err) = handler
+                .handle_request(Request::StartAllServices(RunLevel::Boot))
+                .await
+            {
+                error!("{err}");
             }
+
+            info!("Starting services.");
+            if let Err(err) = handler
+                .handle_request(Request::StartAllServices(RunLevel::Default))
+                .await
+            {
+                error!("{err}");
+            }
+
+            info!("Startup completed.");
+
+            let signal = signal_wait().await;
+            debug!("received signal {signal}");
+
+            // Stop listening for requests by cancelling the future
+            drop(request_handler_future);
+
+            let handler_clone = handler.clone();
+            let handles_clone = handles.clone();
+            let request_handler_future = spawn_local(async move {
+                let handler = handler_clone;
+                let handles = handles_clone;
+                loop {
+                    let conn = listener.accept().await;
+                    let stream = match conn {
+                        Ok((stream, _addr)) => stream,
+                        Err(err) => {
+                            error!("error while accepting a new connection: {err}");
+                            return;
+                        }
+                    };
+                    let handler = handler.clone();
+                    handles.borrow_mut().push(task::spawn_local(async move {
+                        if let Err(err) = handler.handle_stream(stream, true).await {
+                            error!("{err}");
+                        }
+                    }));
+                }
+            });
+
+            // while let Some(handle) = handles.borrow_mut().pop() {
+            //     let res: Result<(), JoinError> = handle.await;
+            //     res.unwrap();
+            // }
+            debug!("awaited on all futures");
+
+            info!("Stopping services");
+            if let Err(err) = handler
+                .handle_request(Request::StopAllServices(RunLevel::Default))
+                .await
+            {
+                error!("{err}");
+            }
+
+            info!("Stopping boot services");
+            if let Err(err) = handler
+                .handle_request(Request::StopAllServices(RunLevel::Boot))
+                .await
+            {
+                error!("{err}");
+            }
+            info!("Service shutdown completed.");
+            while let Some(handle) = handles.borrow_mut().pop() {
+                let res: Result<(), JoinError> = handle.await;
+                res.unwrap();
+            }
+            debug!("awaited on all futures");
+
+            drop(request_handler_future);
         })
         .await;
 
