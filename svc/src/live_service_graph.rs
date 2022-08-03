@@ -384,11 +384,9 @@ impl LiveServiceGraph {
                             // service has stopped yet. Get the state of each one
                             if *live_service.state.borrow()
                                 == ServiceState::Idle(IdleServiceState::Up)
-                            {
-                                if let Ok(state) = live_service.tx.subscribe().recv().await &&
+                                && let Ok(state) = live_service.tx.subscribe().recv().await &&
                                     state == IdleServiceState::Up {
                                         warn!("service {service} didn't exit successfully");
-                                }
                             }
                         }
                     });
