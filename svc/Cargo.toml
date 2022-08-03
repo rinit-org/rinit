@@ -8,7 +8,6 @@ edition = "2021"
 rinit-service = { path = "../service" }
 rinit-ipc = { path = "../ipc" }
 anyhow = { version = "1.0.58", default_features = false }
-async-pidfd = "0.1.4"
 async-recursion = "1.0.0"
 async-scoped-local = { git = "https://github.com/rinit-org/async-scoped-local", features = [ "use-tokio" ] }
 indexmap = "1.9.1"
