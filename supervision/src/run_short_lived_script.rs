@@ -1,11 +1,27 @@
-use std::{process::ExitStatus, time::Duration};
+use std::{
+    process::ExitStatus,
+    time::Duration,
+};
 
-use anyhow::{Context, Result};
+use anyhow::{
+    Context,
+    Result,
+};
 use rinit_service::types::Script;
-use tokio::{select, sync::oneshot, task, time::timeout};
+use tokio::{
+    select,
+    sync::oneshot,
+    task,
+    time::timeout,
+};
 use tracing::warn;
 
-use crate::{exec_script, kill_process, log_output, signal_wait::WaitFn};
+use crate::{
+    exec_script,
+    kill_process,
+    log_output,
+    signal_wait::WaitFn,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 enum ScriptResult {
@@ -99,7 +115,10 @@ mod tests {
 
     use nix::sys::signal::Signal;
     use rinit_service::types::ScriptPrefix;
-    use tokio::{fs::remove_file, time::sleep};
+    use tokio::{
+        fs::remove_file,
+        time::sleep,
+    };
 
     use super::*;
 
