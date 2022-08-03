@@ -42,29 +42,41 @@ impl TryFrom<String> for ScriptPrefix {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Script {
+    /// How the script will executed, i.e. by passing the program to execvp, by
+    /// calling bash, etc..
     pub prefix: ScriptPrefix,
+    /// The program/script to execute
     pub execute: String,
     #[serde(flatten, default, skip_serializing_if = "ScriptConfig::is_empty")]
+    /// The environment of the script, changeble by the user via configuration
+    /// files
     pub config: ScriptConfig,
     #[serde(
         default = "Script::default_timeout",
         skip_serializing_if = "Script::is_default_timeout"
     )]
+    /// How long will the supervisor wait to consider this service up?
+    /// Short lived scripts have to exit within timeout milliseconds
+    /// Long lived scripts have to live at timeout milliseconds
     pub timeout: u32,
     #[serde(
         default = "Script::default_timeout_kill",
         skip_serializing_if = "Script::is_default_timeout_kill"
     )]
+    /// The time to wait until the script has exited after down_signal has been
+    /// sent, in milliseconds
     pub timeout_kill: u32,
     #[serde(
         default = "Script::default_max_deaths",
         skip_serializing_if = "Script::is_default_max_deaths"
     )]
+    /// How many times can this script dies before it is considered "down"
     pub max_deaths: u8,
     #[serde(
         default = "Script::default_down_signal",
         skip_serializing_if = "Script::is_default_down_signal"
     )]
+    /// The signal to send when we want to stop/close a script/process
     pub down_signal: i32,
     pub user: Option<String>,
     pub group: Option<String>,
