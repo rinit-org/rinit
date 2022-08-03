@@ -1,6 +1,4 @@
 use std::{
-    future::Future,
-    pin::Pin,
     process::ExitStatus,
     time::Duration,
 };
@@ -9,7 +7,6 @@ use anyhow::{
     Context,
     Result,
 };
-use async_pidfd::PidFd;
 use rinit_ipc::{
     AsyncConnection,
     Request,
@@ -20,7 +17,7 @@ use rinit_service::types::{
     Service,
 };
 use tokio::{
-    io::unix::AsyncFd,
+    process::Child,
     select,
     sync::oneshot::{
         self,
@@ -28,23 +25,28 @@ use tokio::{
     },
     task::{
         self,
-        JoinError,
         JoinHandle,
     },
     time::timeout,
 };
-use tracing::warn;
+use tracing::{
+    info,
+    warn,
+};
 
 use crate::{
     exec_script,
     kill_process,
     log_output,
     run_short_lived_script,
-    signal_wait::signal_wait_fun,
+    signal_wait::{
+        signal_wait_fun,
+        WaitFn,
+    },
 };
 
 struct RunningScript {
-    pidfd: AsyncFd<PidFd>,
+    child: Child,
     logger: JoinHandle<Result<(), anyhow::Error>>,
     logger_stop: Sender<()>,
 }
@@ -70,26 +72,22 @@ async fn start_process(
         child.stderr.take().unwrap(),
         rx,
     ));
-    let pidfd = AsyncFd::new(
-        PidFd::from_pid(child.id().unwrap() as i32)
-            .context("unable to create PidFd from child pid")?,
-    )
-    .context("unable to create AsyncFd from PidFd")?;
     Ok(select! {
-        timeout_res = timeout(script_timeout, pidfd.readable()) => {
-            if timeout_res.is_ok() {
-                let status = pidfd.get_ref().wait().context("unable to call waitid on child process")?.status();
+        timeout_res = timeout(script_timeout, child.wait()) => {
+            if let Ok(exit_status) = timeout_res {
+                let status = exit_status.context("unable to call wait on child")?;
                 if !tx.is_closed() {
                     tx.send(()).unwrap();
                 }
                 logger.await??;
                 ScriptResult::Exited(status)
             } else {
-                ScriptResult::Running(RunningScript { pidfd, logger, logger_stop: tx } )
+                ScriptResult::Running(RunningScript { child, logger, logger_stop: tx } )
             }
         }
-        _ = wait => {
-            kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+        signal = wait => {
+            info!("received signal {}", signal?.as_str());
+            kill_process(child, script.down_signal, script.timeout_kill).await?;
             if !tx.is_closed() {
                 tx.send(()).unwrap();
             }
@@ -104,7 +102,7 @@ async fn try_start_process<F>(
     mut wait: F,
 ) -> Result<Option<RunningScript>>
 where
-    F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
+    F: FnMut() -> WaitFn,
 {
     let mut time_tried = 0;
     Ok(loop {
@@ -112,7 +110,7 @@ where
 
         match script_res {
             ScriptResult::Exited(status) => {
-                warn!("process exited with status: {status}");
+                warn!("process exited with {status}");
                 time_tried += 1;
                 if let Some(finish_script) = &longrun.finish {
                     let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
@@ -126,20 +124,22 @@ where
         }
     })
 }
-type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
 
 async fn supervise<F>(
-    pidfd: &AsyncFd<PidFd>,
+    child: &mut Child,
     mut wait: F,
 ) -> Result<ScriptResult>
 where
-    F: FnMut() -> Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>,
+    F: FnMut() -> WaitFn,
 {
     Ok(select! {
-        _ = pidfd.readable() => {
-            ScriptResult::Exited(pidfd.get_ref().wait().context("unable to call waitid on child process")?.status())
+        exit_status = child.wait() => {
+            ScriptResult::Exited(exit_status.context("unable to wait on child process")?)
         }
-        _ = wait() => ScriptResult::SignalReceived
+        signal = wait() => {
+            info!("received signal {}", signal?.as_str());
+            ScriptResult::SignalReceived
+        }
     })
 }
 
@@ -149,24 +149,24 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
         _ => unreachable!(),
     };
     let mut conn = AsyncConnection::new_host_address().await?;
-    while let Some(running_script) = try_start_process(&longrun, signal_wait_fun()).await? {
+    while let Some(mut running_script) = try_start_process(&longrun, signal_wait_fun()).await? {
         let request = Request::ServiceIsUp(longrun.name.clone(), true);
         // TODO: handle this
         conn.send_request(request).await??;
-        let res = supervise(&running_script.pidfd, signal_wait_fun()).await;
+        let res = supervise(&mut running_script.child, signal_wait_fun()).await;
         let res = match res {
             Ok(res) => {
                 match res {
                     ScriptResult::SignalReceived => {
                         // stop running
                         kill_process(
-                            &running_script.pidfd,
+                            running_script.child,
                             longrun.run.down_signal,
                             longrun.run.timeout_kill,
                         )
                         .await?;
                     }
-                    ScriptResult::Exited(status) => warn!("process exited with status: {status}"),
+                    ScriptResult::Exited(status) => warn!("process exited with {status}"),
                     ScriptResult::Running(_) => unreachable!(),
                 }
                 Some(res)
@@ -202,6 +202,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
 
 #[cfg(test)]
 mod test {
+    use nix::sys::signal::Signal;
     use rinit_service::types::{
         ScriptPrefix,
         ServiceOptions,
@@ -215,6 +216,7 @@ mod test {
             || {
                 Box::pin(tokio::spawn(async {
                     sleep(Duration::from_millis($time)).await;
+                    Signal::SIGUSR1
                 }))
             }
         };
@@ -268,14 +270,14 @@ mod test {
         };
         let res = try_start_process(&longrun, wait!(1000)).await.unwrap();
         let RunningScript {
-            pidfd,
+            mut child,
             logger,
             logger_stop,
         } = res.unwrap();
         logger_stop.send(()).unwrap();
         logger.await.unwrap().unwrap();
         assert!(matches!(
-            supervise(&pidfd, wait!(1000)).await.unwrap(),
+            supervise(&mut child, wait!(1000)).await.unwrap(),
             ScriptResult::Exited(..)
         ));
     }
@@ -292,9 +294,11 @@ mod test {
         };
         let res = try_start_process(&longrun, wait!(1000)).await.unwrap();
         assert!(res.is_some());
-        if let Some(running_script) = res {
+        if let Some(mut running_script) = res {
             assert!(matches!(
-                supervise(&running_script.pidfd, wait!(1)).await.unwrap(),
+                supervise(&mut running_script.child, wait!(1))
+                    .await
+                    .unwrap(),
                 ScriptResult::SignalReceived
             ));
         }

@@ -3,11 +3,11 @@ use std::{
     pin::Pin,
 };
 
+use nix::sys::signal::Signal;
 use tokio::{
     select,
     signal::unix::{
         signal,
-        Signal,
         SignalKind,
     },
     sync::Mutex,
@@ -15,20 +15,22 @@ use tokio::{
 };
 
 lazy_static! {
-    static ref SIGINT: Mutex<Signal> = Mutex::new(signal(SignalKind::interrupt()).unwrap());
-    static ref SIGTERM: Mutex<Signal> = Mutex::new(signal(SignalKind::terminate()).unwrap());
+    static ref SIGINT: Mutex<tokio::signal::unix::Signal> =
+        Mutex::new(signal(SignalKind::interrupt()).unwrap());
+    static ref SIGTERM: Mutex<tokio::signal::unix::Signal> =
+        Mutex::new(signal(SignalKind::terminate()).unwrap());
 }
-type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
+pub type WaitFn = Pin<Box<dyn Future<Output = Result<Signal, JoinError>> + Unpin>>;
 
 pub fn signal_wait_fun() -> Box<dyn FnMut() -> WaitFn> {
     Box::new(|| Box::pin(tokio::spawn(async { signal_wait().await })))
 }
 
-pub async fn signal_wait() {
+pub async fn signal_wait() -> Signal {
     let mut sigint = SIGINT.lock().await;
     let mut sigterm = SIGTERM.lock().await;
     select! {
-        _ = sigint.recv() => {},
-        _ = sigterm.recv() => {},
-    };
+        _ = sigint.recv() => Signal::SIGINT,
+        _ = sigterm.recv() => Signal::SIGTERM,
+    }
 }

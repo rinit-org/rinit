@@ -9,7 +9,10 @@ use rinit_ipc::{
     Reply,
     Request,
 };
-use rinit_service::service_state::ServiceState;
+use rinit_service::service_state::{
+    IdleServiceState,
+    ServiceState,
+};
 use tokio::{
     net::UnixStream,
     sync::RwLock,
@@ -87,13 +90,13 @@ impl RequestHandler {
             Request::ServiceIsUp(name, up) => {
                 let new_state = if up {
                     info!("Service {name} is up");
-                    ServiceState::Up
+                    IdleServiceState::Up
                 } else {
                     info!("Service {name} is down");
-                    ServiceState::Down
+                    IdleServiceState::Down
                 };
                 graph.update_service_state(&name, new_state)?;
-                if matches!(new_state, ServiceState::Down) {
+                if new_state == IdleServiceState::Down {
                     drop(graph);
                     let mut graph = self.graph.write().await;
                     graph.update_service(&name)?;
@@ -124,23 +127,23 @@ impl RequestHandler {
                 Reply::ServicesStates(states.into_iter().collect::<Result<Vec<_>, _>>()?)
             }
             Request::ServiceStatus(service) => {
-                let state = graph.get_service(&service)?.get_final_state();
+                let state = graph.get_service(&service)?.wait_idle_state();
                 drop(graph);
-                Reply::ServiceState(service.clone(), state.await)
+                Reply::ServiceState(service.clone(), ServiceState::Idle(state.await))
             }
             Request::StartService { service, runlevel } => {
                 graph.check_runlevel(&service, runlevel)?;
                 graph.start_service(graph.get_service(&service)?).await?;
-                let state = graph.get_service(&service)?.get_final_state();
+                let state = graph.get_service(&service)?.wait_idle_state();
                 drop(graph);
-                Reply::Success(state.await == ServiceState::Up)
+                Reply::Success(state.await == IdleServiceState::Up)
             }
             Request::StopService { service, runlevel } => {
                 graph.check_runlevel(&service, runlevel)?;
                 graph.stop_service(graph.get_service(&service)?).await?;
-                let state = graph.get_service(&service)?.get_final_state();
+                let state = graph.get_service(&service)?.wait_idle_state();
                 drop(graph);
-                Reply::Success(state.await == ServiceState::Down)
+                Reply::Success(state.await == IdleServiceState::Down)
             }
             Request::StartAllServices(runlevel) => {
                 graph.start_all_services(runlevel).await;

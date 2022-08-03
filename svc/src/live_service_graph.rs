@@ -5,18 +5,20 @@ use std::{
         TryReserveError,
     },
     io,
-    os::unix::prelude::{
-        AsRawFd,
-        RawFd,
-    },
     process::Stdio,
-    ptr,
+    time::Duration,
 };
 
-use async_pidfd::PidFd;
 use async_recursion::async_recursion;
 use async_scoped_local::TokioScope;
 use indexmap::IndexMap;
+use nix::{
+    sys::signal::{
+        kill,
+        Signal,
+    },
+    unistd::Pid,
+};
 use rinit_ipc::request_error::{
     DependencyFailedToStartSnafu,
     DependencyGraphNotFoundSnafu,
@@ -30,7 +32,11 @@ use rinit_ipc::request_error::{
 use rinit_service::{
     config::Config,
     graph::DependencyGraph,
-    service_state::ServiceState,
+    service_state::{
+        IdleServiceState,
+        ServiceState,
+        TransitioningServiceState,
+    },
     types::{
         RunLevel,
         Service,
@@ -38,17 +44,23 @@ use rinit_service::{
 };
 use snafu::{
     ensure,
-    IntoError,
     OptionExt,
     ResultExt,
     Snafu,
 };
 use tokio::{
-    io::unix::AsyncFd,
-    process::Command,
+    process::{
+        Child,
+        Command,
+    },
+    time::timeout,
 };
 use tokio_stream::StreamExt;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+    warn,
+};
 
 use crate::live_service::LiveService;
 
@@ -65,16 +77,16 @@ pub enum SystemError {
     JsonDeserializeError { source: serde_json::Error },
     #[snafu(display("error when joining tasks: {source}"))]
     JoinError { source: tokio::task::JoinError },
-    #[snafu(display("error when creating a pidfd: {source}"))]
-    PidFdError { source: io::Error },
-    #[snafu(display("error when sending a signal through: {source}"))]
-    PidFdSendSignalError { source: io::Error },
-    #[snafu(display("error when waiting on a pidfd: {source}"))]
-    PidFdWaitError { source: io::Error },
+    #[snafu(display("rsupervision is not in PATH"))]
+    RSupervisionNotInPath,
+    #[snafu(display("error when sending a signal: {source}"))]
+    SendSignalError { source: nix::Error },
     #[snafu(display("error when spawning the supervisor: {source}"))]
     SpawnError { source: io::Error },
     #[snafu(display("error when allocating into the memory: {source}"))]
     TryReserveError { source: TryReserveError },
+    #[snafu(display("error when waiting on a child: {source}"))]
+    WaitError { source: io::Error },
 }
 
 // Snafu doesn't work with enums of enums
@@ -98,28 +110,6 @@ impl From<SystemError> for LiveGraphError {
     fn from(e: SystemError) -> Self {
         LiveGraphError::SystemError { err: e }
     }
-}
-
-pub fn pidfd_send_signal(
-    pidfd: RawFd,
-    signal: i32,
-) -> io::Result<()> {
-    unsafe {
-        let ret = libc::syscall(
-            libc::SYS_pidfd_send_signal,
-            pidfd,
-            signal,
-            ptr::null_mut() as *mut libc::c_char,
-            0,
-        );
-        if ret == -1 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret)
-        }
-    }?;
-
-    Ok(())
 }
 
 impl From<LiveGraphError> for RequestError {
@@ -198,23 +188,24 @@ impl LiveServiceGraph {
         live_service: &LiveService,
     ) -> Result<()> {
         let mut state = *live_service.state.borrow();
-        if state == ServiceState::Up {
+        if state == ServiceState::Idle(IdleServiceState::Up) {
             return Ok(());
         }
-        while state == ServiceState::Stopping {
-            state = live_service.get_final_state().await;
+        if matches!(state, ServiceState::Transitioning(_)) {
+            state = ServiceState::Idle(live_service.wait_idle_state().await);
         }
-        // Check that the service is not already starting
-        // or is already up. Some other task could have done so while awaiting above
-        if state != ServiceState::Starting && state != ServiceState::Up {
+        // If the service is down
+        if state == ServiceState::Idle(IdleServiceState::Down) {
             trace!("starting service {}", live_service.node.name());
-            live_service.state.replace(ServiceState::Starting);
+            live_service.state.replace(ServiceState::Transitioning(
+                TransitioningServiceState::Starting,
+            ));
             self.start_dependencies(live_service).await?;
             self.start_service_impl(live_service).await?;
         }
-        let state = live_service.get_final_state().await;
+        let state = live_service.wait_idle_state().await;
         ensure!(
-            state == ServiceState::Up,
+            state == IdleServiceState::Up,
             ServiceFailedToStartSnafu {
                 service: live_service.node.name().to_string(),
             },
@@ -234,11 +225,8 @@ impl LiveServiceGraph {
             .iter()
             .map(async move |dep| -> Result<()> {
                 let dep_service = self.live_services.get(dep).unwrap();
-                if matches!(
-                    dep_service.get_final_state().await,
-                    ServiceState::Reset | ServiceState::Down
-                ) {
-                    // Awaiting here is safe, as starting services always mean spawning ks-run-*
+                if dep_service.wait_idle_state().await == IdleServiceState::Down {
+                    // Awaiting here is safe, as starting services always mean spawning rsupervisor
                     self.start_service(dep_service).await
                 } else {
                     Ok(())
@@ -268,29 +256,17 @@ impl LiveServiceGraph {
         if let Some(supervise) = res {
             // TODO: Add logging and remove unwrap
             trace!("starting rsupervision for {}", live_service.node.name());
-            let child = loop {
-                let res = Command::new("rsupervision")
-                    .args(vec![
-                        supervise,
-                        &format!(
-                            "--logdir={}",
-                            self.config.logdir.as_ref().unwrap().to_string_lossy()
-                        ),
-                        &serde_json::to_string(&live_service.node.service).unwrap(),
-                    ])
-                    .stdin(Stdio::null())
-                    .spawn();
-                match res {
-                    Ok(child) => break child,
-                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(err) => return Err(SpawnSnafu.into_error(err).into()),
-                }
-            };
+            let child = spawn_supervisor(vec![
+                supervise,
+                &format!(
+                    "--logdir={}",
+                    self.config.logdir.as_ref().unwrap().to_string_lossy()
+                ),
+                &serde_json::to_string(&live_service.node.service).unwrap(),
+            ])?;
             trace!("rsupervision for {} started", live_service.node.name());
 
-            live_service.pidfd.replace(Some(
-                AsyncFd::new(PidFd::from_pid(child.id().unwrap() as i32).unwrap()).unwrap(),
-            ));
+            live_service.child.replace(Some(child));
         }
 
         Ok(())
@@ -302,9 +278,9 @@ impl LiveServiceGraph {
     ) -> Result<()> {
         for dep in live_service.node.service.dependencies() {
             let dep_service = &self.live_services[dep];
-            let state = dep_service.get_final_state().await;
+            let state = dep_service.wait_idle_state().await;
             ensure!(
-                state == ServiceState::Up,
+                state == IdleServiceState::Up,
                 DependencyFailedToStartSnafu {
                     service: live_service.node.name().to_string(),
                     dependency: dep.to_string(),
@@ -328,29 +304,52 @@ impl LiveServiceGraph {
         &self,
         live_service: &LiveService,
     ) -> Result<()> {
+        live_service.state.replace(ServiceState::Transitioning(
+            TransitioningServiceState::Stopping,
+        ));
         match &live_service.node.service {
             Service::Oneshot(_) => {
-                // TODO: Add logging and remove unwrap
-                Command::new("rsupervision")
-                    .args(vec![
-                        "--oneshot=stop",
-                        &format!(
-                            "--logdir={}",
-                            self.config.logdir.as_ref().unwrap().to_string_lossy()
-                        ),
-                        &serde_json::to_string(&live_service.node.service).unwrap(),
-                    ])
-                    .stdin(Stdio::null())
-                    .spawn()
-                    .unwrap();
+                // TODO: Only launch the supervisor if the stop script exists
+                let mut child = spawn_supervisor(vec![
+                    "--oneshot=stop",
+                    &format!(
+                        "--logdir={}",
+                        self.config.logdir.as_ref().unwrap().to_string_lossy()
+                    ),
+                    &serde_json::to_string(&live_service.node.service).unwrap(),
+                ])?;
+                // Put the timeout as a fail safe to avoid blocking the svc in case of errors
+                let timeout_res = timeout(
+                    // Put an arbitrary large value here, we know that the supervisor will return
+                    // almost immediately
+                    Duration::from_millis(500),
+                    child.wait(),
+                )
+                .await;
+                if let Ok(exit_status) = timeout_res {
+                    exit_status.with_context(|_| WaitSnafu)?;
+                }
             }
-            Service::Longrun(_) => {
-                if let Some(pidfd) = live_service.pidfd.take() {
-                    // TODO: Add timeout
-                    pidfd_send_signal(pidfd.as_raw_fd(), 9)
-                        .with_context(|_| PidFdSendSignalSnafu)?;
-                    let _ready = pidfd.readable().await.unwrap();
-                    pidfd.get_ref().wait().with_context(|_| PidFdWaitSnafu)?;
+            Service::Longrun(longrun) => {
+                if let Some(mut child) = live_service.child.take() {
+                    debug!("sending SIGTERM to {} supervisor", live_service.node.name());
+                    kill(Pid::from_raw(child.id().unwrap() as i32), Signal::SIGTERM)
+                        .with_context(|_| SendSignalSnafu)?;
+                    let timeout_res = timeout(
+                        Duration::from_millis(
+                            (longrun.run.get_maximum_time()
+                                + longrun
+                                    .finish
+                                    .as_ref()
+                                    .map_or(0, |finish| finish.get_maximum_time()))
+                            .into(),
+                        ),
+                        child.wait(),
+                    )
+                    .await;
+                    if let Ok(exit_status) = timeout_res {
+                        exit_status.with_context(|_| WaitSnafu)?;
+                    }
                 }
             }
             Service::Bundle(_) => {}
@@ -420,15 +419,14 @@ impl LiveServiceGraph {
         let dependents_running = tokio_stream::iter(dependents
             .iter())
             // Run this sequentially since we can't stop until each has been stopped
-            .then(async move |dependent| -> (&LiveService, ServiceState) {
-                (dependent, dependent.get_final_state().await)
+            .then(async move |dependent| -> (&LiveService, IdleServiceState) {
+                (dependent, dependent.wait_idle_state().await)
             })
             .filter_map(|(dependent, state)|
                 match state {
-                ServiceState::Reset | ServiceState::Down => None,
-                ServiceState::Up | ServiceState::Starting
-                | ServiceState::Stopping=> Some(dependent),
-            })
+                    IdleServiceState::Down => None,
+                    IdleServiceState::Up => Some(dependent),
+                })
             .map(|live_service| live_service.node.name().to_owned())
             .collect::<Vec<String>>()
             .await;
@@ -500,19 +498,16 @@ impl LiveServiceGraph {
                     let new_live_service =
                         LiveService::new(dep_graph.nodes.swap_remove(&name).unwrap());
                     let state = *self.live_services[&name].state.borrow();
-                    match state {
-                        // If a service is already down or in reset state, just update it with
-                        // the new one
-                        ServiceState::Reset | ServiceState::Down => {
-                            new_live_service.update_state(state);
-                            self.live_services[&name] = new_live_service;
-                            // Keep the current state
-                        }
+                    // If a service is already down, just update it with
+                    // the new one
+                    if state == ServiceState::Idle(IdleServiceState::Down) {
+                        new_live_service.update_state(state);
+                        self.live_services[&name] = new_live_service;
+                        // Keep the current state
+                    } else {
                         // otherwise, mark it for update. It will be updated by
                         // update_service_state
-                        ServiceState::Up | ServiceState::Starting | ServiceState::Stopping => {
-                            self.live_services[&name].new = Some(Box::new(new_live_service));
-                        }
+                        self.live_services[&name].new = Some(Box::new(new_live_service));
                     }
                 }
                 (false, false) => unreachable!(),
@@ -525,10 +520,10 @@ impl LiveServiceGraph {
     pub fn update_service_state(
         &self,
         name: &str,
-        state: ServiceState,
+        state: IdleServiceState,
     ) -> Result<()> {
         let live_service = self.get_service(name)?;
-        live_service.update_state(state);
+        live_service.update_state(ServiceState::Idle(state));
         live_service.tx.send(state).unwrap();
         Ok(())
     }
@@ -551,7 +546,7 @@ impl LiveServiceGraph {
         } else if live_service.new.is_some() {
             let live_service = self.live_services.swap_remove(name).unwrap();
             let new_live_service = live_service.new.unwrap();
-            new_live_service.update_state(ServiceState::Down);
+            new_live_service.update_state(ServiceState::Idle(IdleServiceState::Down));
             self.live_services
                 .insert(name.to_string(), *new_live_service);
         }
@@ -570,4 +565,21 @@ impl LiveServiceGraph {
 
         Ok(())
     }
+}
+
+fn spawn_supervisor(args: Vec<&str>) -> Result<Child> {
+    let mut cmd = Command::new("rsupervision");
+    cmd.args(args).stdin(Stdio::null());
+    Ok(loop {
+        let res = cmd.spawn();
+        match res {
+            Ok(child) => break child,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+            // rsupervision is not in PATH, notify the user
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                RSupervisionNotInPathSnafu {}.fail()?
+            }
+            Err(_) => res.map(|_| ()).context(SpawnSnafu {})?,
+        }
+    })
 }

@@ -7,10 +7,11 @@ use anyhow::{
 use nix::{
     sys::signal::{
         SigSet,
-        Signal,
+        SigmaskHow,
     },
     unistd::{
         Group,
+        Pid,
         User,
     },
 };
@@ -22,6 +23,7 @@ use tokio::process::{
     Child,
     Command,
 };
+use tracing::warn;
 
 pub async fn exec_script(script: &Script) -> Result<Child> {
     let (exe, args) = match &script.prefix {
@@ -64,10 +66,15 @@ pub async fn exec_script(script: &Script) -> Result<Child> {
         .stderr(Stdio::piped());
     unsafe {
         cmd.pre_exec(move || -> Result<(), std::io::Error> {
-            let mut mask = SigSet::empty();
-            mask.add(Signal::SIGINT);
-            mask.add(Signal::SIGTERM);
-            mask.thread_unblock().map_err(|err| err.into())
+            let mask = SigSet::empty();
+            if let Err(err) = mask.thread_swap_mask(SigmaskHow::SIG_SETMASK) {
+                warn!("failed to unblock signals: {:#?}", err);
+            }
+            // create a new process group
+            if let Err(err) = nix::unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0)) {
+                warn!("failed to create new process group: {:#?}", err);
+            }
+            Ok(())
         })
     };
     let child = cmd.spawn().context("unable to spawn script")?;

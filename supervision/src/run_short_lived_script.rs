@@ -1,33 +1,11 @@
-use std::{
-    future::Future,
-    pin::Pin,
-    process::ExitStatus,
-    time::Duration,
-};
+use std::{process::ExitStatus, time::Duration};
 
-use anyhow::{
-    Context,
-    Result,
-};
-use async_pidfd::PidFd;
+use anyhow::{Context, Result};
 use rinit_service::types::Script;
-use tokio::{
-    io::unix::AsyncFd,
-    select,
-    sync::oneshot,
-    task::{
-        self,
-        JoinError,
-    },
-    time::timeout,
-};
+use tokio::{select, sync::oneshot, task, time::timeout};
 use tracing::warn;
 
-use crate::{
-    exec_script,
-    kill_process,
-    log_output,
-};
+use crate::{exec_script, kill_process, log_output, signal_wait::WaitFn};
 
 #[derive(Debug, PartialEq, Eq)]
 enum ScriptResult {
@@ -35,8 +13,6 @@ enum ScriptResult {
     SignalReceived,
     TimedOut,
 }
-
-type WaitFn = Pin<Box<dyn Future<Output = Result<(), JoinError>> + Unpin>>;
 
 pub async fn run_short_lived_script<F>(
     script: &Script,
@@ -58,16 +34,11 @@ where
             child.stderr.take().unwrap(),
             rx,
         ));
-        let pidfd = AsyncFd::new(
-            PidFd::from_pid(child.id().unwrap() as i32)
-                .context("unable to create PidFd from child pid")?,
-        )
-        .context("unable to create AsyncFd from PidFd")?;
         let script_res = select! {
-            timeout_res = timeout(script_timeout, pidfd.readable()) => {
-                if timeout_res.is_ok() {
-                    ScriptResult::Exited(match pidfd.get_ref().wait().context("unable to call waitid on child process") {
-                        Ok(wait) => wait.status(),
+            timeout_res = timeout(script_timeout, child.wait()) => {
+                if let Ok(exit_status) = timeout_res {
+                    ScriptResult::Exited(match exit_status.context("unable to call wait on child") {
+                        Ok(exit_status) => exit_status,
                         Err(err) => {
                             warn!("{err}");
                             time_tried += 1;
@@ -85,17 +56,23 @@ where
         };
 
         match script_res {
+            // The process exited on its own within timeout
             ScriptResult::Exited(exit_status) => {
+                // We want the process to exit successfully to consider it "up"
                 if exit_status.success() {
                     break true;
                 }
             }
+            // The supervisor received a signal while waiting and interuppted the wait
             ScriptResult::SignalReceived => {
-                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+                // Kill the process before exiting
+                kill_process(child, script.down_signal, script.timeout_kill).await?;
                 break false;
             }
+            // The script didn't exit within timeout
             ScriptResult::TimedOut => {
-                kill_process(&pidfd, script.down_signal, script.timeout_kill).await?;
+                // Kill it and try again
+                kill_process(child, script.down_signal, script.timeout_kill).await?;
             }
         }
 
@@ -118,8 +95,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use nix::sys::signal::Signal;
     use rinit_service::types::ScriptPrefix;
-    use tokio::time::sleep;
+    use tokio::{fs::remove_file, time::sleep};
 
     use super::*;
 
@@ -128,6 +108,7 @@ mod tests {
             || {
                 Box::pin(tokio::spawn(async {
                     sleep(Duration::from_secs($time)).await;
+                    Signal::SIGUSR1
                 }))
             }
         };
@@ -155,17 +136,47 @@ mod tests {
     #[tokio::test]
     async fn test_run_script_force_kill() {
         let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
-        script.timeout = 10;
-        script.timeout_kill = 10;
-        script.down_signal = 0;
+        // Make it timeout immediately
+        script.timeout = 1;
+        // Set it to a low value, we know that down_signal won't stop it
+        script.timeout_kill = 1;
+        // 10 is SIGUSR1. Send a signal that won't terminate the program
+        script.down_signal = 10;
         script.max_deaths = 1;
         assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
     }
 
     #[tokio::test]
-    async fn test_run_script_signal_received() {
-        let mut script = Script::new(ScriptPrefix::Path, "sleep 100".to_string());
+    async fn test_run_script_side_effects() {
+        let filename = "test_run_script_side_effects";
+        let script = Script::new(ScriptPrefix::Bash, format!("touch {filename}"));
+        assert!(run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(Path::new(filename).exists());
+        // cleanup
+        remove_file(filename).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn receive_signal_while_starting_prefix_path() {
+        // Spawn another bash shell and listen for SIGTERM signals there
+        // We want to be sure that bash is properly sending SIGTERM to all its children
+        // (which is still bash in this case)
+        let execute = format!("sleep 100");
+        let mut script = Script::new(ScriptPrefix::Path, execute);
         script.timeout = 100000;
-        assert!(!run_short_lived_script(&script, wait!(0)).await.unwrap());
+        // Wait 50 milliseconds to give time for the file to be created
+        assert!(!run_short_lived_script(&script, wait!(1)).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn receive_signal_while_starting_prefix_bash() {
+        // Spawn another bash shell and listen for SIGTERM signals there
+        // We want to be sure that bash is properly sending SIGTERM to all its children
+        // (which is still bash in this case)
+        let execute = format!("sleep 100");
+        let mut script = Script::new(ScriptPrefix::Bash, execute);
+        script.timeout = 100000;
+        // Wait 50 milliseconds to give time for the file to be created
+        assert!(!run_short_lived_script(&script, wait!(1)).await.unwrap());
     }
 }
