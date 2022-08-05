@@ -207,7 +207,8 @@ impl DependencyGraph {
                             DependenciesMustHaveSameRunLevelSnafu {
                                 service: node.name(),
                                 dependency: dep
-                            });
+                            }
+                        );
                         Ok(())
                     })
             })?;
