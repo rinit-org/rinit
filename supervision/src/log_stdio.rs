@@ -101,13 +101,12 @@ pub async fn log_output(
             },
             read = async {
                 if stderr_open {
-                    Some(stderr.read(&mut stderr_buf[..]).await )
+                    stderr.read(&mut stderr_buf[..]).await
                 } else {
                     future::pending::<()>().await;
                     unreachable!()
                 }
             } => {
-                let read = read.unwrap();
                 match read {
                     // No input, the writing end has been closed
                     Ok(0) => {

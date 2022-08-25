@@ -180,7 +180,7 @@ mod tests {
         // Spawn another bash shell and listen for SIGTERM signals there
         // We want to be sure that bash is properly sending SIGTERM to all its children
         // (which is still bash in this case)
-        let execute = format!("sleep 100");
+        let execute = "sleep 100".to_string();
         let mut script = Script::new(ScriptPrefix::Path, execute);
         script.timeout = 100000;
         // Wait 50 milliseconds to give time for the file to be created
@@ -192,7 +192,7 @@ mod tests {
         // Spawn another bash shell and listen for SIGTERM signals there
         // We want to be sure that bash is properly sending SIGTERM to all its children
         // (which is still bash in this case)
-        let execute = format!("sleep 100");
+        let execute = "sleep 100".to_string();
         let mut script = Script::new(ScriptPrefix::Bash, execute);
         script.timeout = 100000;
         // Wait 50 milliseconds to give time for the file to be created

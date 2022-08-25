@@ -45,7 +45,7 @@ impl ArrayParser {
         line: &str,
     ) -> Result<bool, ArrayParserError> {
         let eq_token_index = line.find('=');
-        if eq_token_index == None {
+        if eq_token_index.is_none() {
             // this is an error, but let the key_value parser throws
             return Ok(false);
         }
