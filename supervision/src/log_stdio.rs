@@ -126,7 +126,8 @@ pub async fn log_output(
             }
         }
 
-        if stdout_open && stderr_open {
+        // If both ends are closed, exit out of the loop
+        if !stdout_open && !stderr_open {
             break;
         }
     }
