@@ -45,7 +45,6 @@ impl SectionBuilder for ServiceOptionsBuilder {
         let dependencies = array_values.remove("dependencies").unwrap_or_default();
         let requires = array_values.remove("requires").unwrap_or_default();
         let requires_one = array_values.remove("requires-one").unwrap_or_default();
-        // TODO: return error when auto-start is != yes and != no
         let autostart = values
             .remove("autostart")
             .map_or(Ok(true), |autostart| {

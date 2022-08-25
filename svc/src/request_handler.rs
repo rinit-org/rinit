@@ -101,6 +101,8 @@ impl RequestHandler {
                     IdleServiceState::Down
                 };
                 graph.update_service_state(&name, new_state)?;
+                // To update the service, we need the get a write lock
+                // Only get it if needed
                 if new_state == IdleServiceState::Down {
                     drop(graph);
                     let mut graph = self.graph.write().await;

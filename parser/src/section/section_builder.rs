@@ -77,6 +77,8 @@ pub trait SectionBuilder: Any {
         code_values: &mut HashMap<&'static str, String>,
     );
 
+    // Parse line per line and fill the three structures values, array_values and
+    // code_values. The valid keys are defined in the trait methods
     fn parse_until_next_section<'a>(
         &mut self,
         lines: &'a [&'a str],
@@ -88,11 +90,16 @@ pub trait SectionBuilder: Any {
         let mut code_values: HashMap<&'static str, String> = HashMap::new();
         let mut next_section: &'a [&str] = &[];
         for (index, line) in lines.iter().enumerate() {
+            // If we are currently parsing a code value (`=(`), then take the line as it is
+            // and pass it to the code_parser
             if code_parser.is_parsing {
                 code_parser.parse_line(line);
+                // Did we find a closing token?
                 if code_parser.is_parsing {
+                    // If not, go to the next line
                     continue;
                 }
+                // Otherwise add this value to the code_values
                 add_field_value(
                     &code_parser.key,
                     code_parser.code,
@@ -100,16 +107,24 @@ pub trait SectionBuilder: Any {
                     self.get_code_fields(),
                 )?;
 
+                // Reset
                 code_parser = CodeParser::new();
             }
 
             let line = line.trim();
+            // Start testing for empty lines (we skip them) or for code values
             if is_empty_line(line)
                 || code_parser
                     .start_parsing(line)
                     .with_context(|_| CodeParserSnafu)?
             {
+                // The first line of the code values (`key =(`) do not contain any data
+                // go to the next
                 continue;
+                // Checking for array parser here after
+                // code_parser.start_parsing is fine because we
+                // assume that no section can have arrays and code
+                // change accordingly if this assumption change
             } else if (array_parser.is_parsing && {
                 array_parser.parse_line(line).context(ArrayParserSnafu {
                     field: array_parser.key.to_owned(),
@@ -132,6 +147,7 @@ pub trait SectionBuilder: Any {
                     self.get_array_fields(),
                 )?;
                 array_parser = ArrayParser::new();
+                // Is this line a new section? Then break the loop
             } else if parse_section(line).is_some() {
                 next_section = &lines[index..];
                 break;

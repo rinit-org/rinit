@@ -85,7 +85,6 @@ pub async fn log_output(
                     unreachable!()
                 }
             } => {
-                // This is always Some
                 match read {
                     // No input, the writing end has been closed
                     Ok(0) => {
