@@ -7,8 +7,6 @@ use serde::{
 use serde_with::skip_serializing_none;
 use snafu::Snafu;
 
-use super::script_config::ScriptConfig;
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum ScriptPrefix {
     Bash,
@@ -47,10 +45,6 @@ pub struct Script {
     pub prefix: ScriptPrefix,
     /// The program/script to execute
     pub execute: String,
-    #[serde(flatten, default, skip_serializing_if = "ScriptConfig::is_empty")]
-    /// The environment of the script, changeble by the user via configuration
-    /// files
-    pub config: ScriptConfig,
     #[serde(
         default = "Script::default_timeout",
         skip_serializing_if = "Script::is_default_timeout"
@@ -130,7 +124,6 @@ impl Script {
         Self {
             prefix,
             execute,
-            config: ScriptConfig::new(),
             timeout: Self::default_timeout(),
             timeout_kill: Self::default_timeout_kill(),
             max_deaths: Self::default_max_deaths(),

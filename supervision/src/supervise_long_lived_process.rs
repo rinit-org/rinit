@@ -204,6 +204,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
 mod test {
     use nix::sys::signal::Signal;
     use rinit_service::types::{
+        ScriptEnvironment,
         ScriptPrefix,
         ServiceOptions,
     };
@@ -233,6 +234,7 @@ mod test {
             run: script,
             finish: None,
             options: ServiceOptions::new(),
+            environment: ScriptEnvironment::new(),
         };
         assert!(
             try_start_process(&longrun, wait!(1000))
@@ -251,6 +253,7 @@ mod test {
             run: script,
             finish: None,
             options: ServiceOptions::new(),
+            environment: ScriptEnvironment::new(),
         };
         assert!(matches!(
             try_start_process(&longrun, wait!(1000)).await.unwrap(),
@@ -267,6 +270,7 @@ mod test {
             run: script,
             finish: None,
             options: ServiceOptions::new(),
+            environment: ScriptEnvironment::new(),
         };
         let res = try_start_process(&longrun, wait!(1000)).await.unwrap();
         let RunningScript {
@@ -291,6 +295,7 @@ mod test {
             run: script,
             finish: None,
             options: ServiceOptions::new(),
+            environment: ScriptEnvironment::new(),
         };
         let res = try_start_process(&longrun, wait!(1000)).await.unwrap();
         assert!(res.is_some());

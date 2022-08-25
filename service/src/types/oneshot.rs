@@ -14,4 +14,6 @@ pub struct Oneshot {
     pub stop: Option<Script>,
     #[serde(flatten)]
     pub options: ServiceOptions,
+    #[serde(flatten, default, skip_serializing_if = "ScriptEnvironment::is_empty")]
+    pub environment: ScriptEnvironment,
 }

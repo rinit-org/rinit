@@ -8,3 +8,4 @@ edition = "2021"
 rinit-service = { path = "../service" }
 nix = "0.24.2"
 snafu = "0.7.1"
+snailquote = "0.3.1"

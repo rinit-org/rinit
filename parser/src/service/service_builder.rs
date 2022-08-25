@@ -2,6 +2,7 @@ use rinit_service::types::{
     Bundle,
     Longrun,
     Oneshot,
+    ScriptEnvironment,
     Service,
     ServiceOptions,
 };
@@ -19,6 +20,7 @@ use crate::{
     section::{
         BundleOptionsBuilder,
         ScriptBuilder,
+        ScriptEnvironmentBuilder,
         SectionBuilder,
         SectionBuilderError,
         ServiceOptionsBuilder,
@@ -108,6 +110,7 @@ pub struct OneshotBuilder {
     start_builder: ScriptBuilder,
     stop_builder: ScriptBuilder,
     options_builder: ServiceOptionsBuilder,
+    env_builder: ScriptEnvironmentBuilder,
 }
 
 #[derive(Snafu, Debug)]
@@ -123,6 +126,7 @@ impl OneshotBuilder {
             start_builder: ScriptBuilder::new_for_section("start"),
             stop_builder: ScriptBuilder::new_for_section("stop"),
             options_builder: ServiceOptionsBuilder::new(),
+            env_builder: ScriptEnvironmentBuilder::new(),
         }
     }
 }
@@ -132,6 +136,7 @@ pub struct LongrunBuilder {
     run_builder: ScriptBuilder,
     finish_builder: ScriptBuilder,
     options_builder: ServiceOptionsBuilder,
+    env_builder: ScriptEnvironmentBuilder,
 }
 
 #[derive(Snafu, Debug)]
@@ -147,6 +152,7 @@ impl LongrunBuilder {
             run_builder: ScriptBuilder::new_for_section("run"),
             finish_builder: ScriptBuilder::new_for_section("finish"),
             options_builder: ServiceOptionsBuilder::new(),
+            env_builder: ScriptEnvironmentBuilder::new(),
         }
     }
 }
@@ -178,11 +184,14 @@ impl ServiceBuilder for OneshotBuilder {
             } else {
                 None
             },
-            options: if let Some(options) = self.options_builder.options {
-                options?
-            } else {
-                ServiceOptions::new()
-            },
+            options: self
+                .options_builder
+                .options
+                .unwrap_or_else(|| Ok(ServiceOptions::new()))?,
+            environment: self
+                .env_builder
+                .environment
+                .unwrap_or_else(|| Ok(ScriptEnvironment::new()))?,
         }))
     }
 
@@ -193,7 +202,9 @@ impl ServiceBuilder for OneshotBuilder {
         "stop",
         self.stop_builder,
         "options",
-        self.options_builder
+        self.options_builder,
+        "env",
+        self.env_builder
     );
 }
 
@@ -210,11 +221,14 @@ impl ServiceBuilder for LongrunBuilder {
             } else {
                 None
             },
-            options: if let Some(options) = self.options_builder.options {
-                options?
-            } else {
-                ServiceOptions::new()
-            },
+            options: self
+                .options_builder
+                .options
+                .unwrap_or_else(|| Ok(ServiceOptions::new()))?,
+            environment: self
+                .env_builder
+                .environment
+                .unwrap_or_else(|| Ok(ScriptEnvironment::new()))?,
         }))
     }
 
@@ -225,6 +239,8 @@ impl ServiceBuilder for LongrunBuilder {
         "finish",
         self.finish_builder,
         "options",
-        self.options_builder
+        self.options_builder,
+        "env",
+        self.env_builder
     );
 }

@@ -339,6 +339,7 @@ mod test {
             start: Script::new(ScriptPrefix::Bash, "exit 0".to_string()),
             stop: None,
             options,
+            environment: ScriptEnvironment::new(),
         })
     }
 

@@ -169,6 +169,7 @@ mod test {
                 start: Script::new(ScriptPrefix::Bash, "    exit 0\n".to_string()),
                 stop: None,
                 options: ServiceOptions::new(),
+                environment: ScriptEnvironment::new(),
             }),
             parse_service(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -188,6 +189,7 @@ mod test {
                 start: Script::new(ScriptPrefix::Bash, "    exit 0\n".to_string()),
                 stop: Some(Script::new(ScriptPrefix::Sh, "    exit 1\n".to_string())),
                 options: ServiceOptions::new(),
+                environment: ScriptEnvironment::new(),
             }),
             parse_service(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -207,6 +209,7 @@ mod test {
                 run: Script::new(ScriptPrefix::Bash, "    loop\n".to_string()),
                 finish: None,
                 options: ServiceOptions::new(),
+                environment: ScriptEnvironment::new(),
             }),
             parse_service(
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))

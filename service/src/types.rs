@@ -5,7 +5,7 @@ mod oneshot;
 mod provider;
 mod runlevel;
 mod script;
-mod script_config;
+mod script_environment;
 mod service;
 mod service_options;
 mod virtual_service;
@@ -18,7 +18,7 @@ pub use self::{
     provider::*,
     runlevel::*,
     script::*,
-    script_config::*,
+    script_environment::*,
     service::*,
     service_options::*,
     virtual_service::*,
