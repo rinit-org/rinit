@@ -104,6 +104,9 @@ mod test {
         );
 
         let env = builder.environment.unwrap().unwrap();
-        assert_eq!(env.get("MYENV").unwrap(), "MYVAL");
+        assert_eq!(
+            env.contents.iter().find(|(k, _v)| k == "MYENV").unwrap(),
+            &("MYENV".to_string(), "MYVAL".to_string())
+        );
     }
 }
