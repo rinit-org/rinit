@@ -13,7 +13,6 @@ use rinit_ipc::{
 };
 use rinit_service::types::{
     Longrun,
-    Script,
     Service,
 };
 use tokio::{
@@ -58,12 +57,13 @@ enum ScriptResult {
 }
 
 async fn start_process(
-    script: &Script,
+    longrun: &Longrun,
     wait: WaitFn,
 ) -> Result<ScriptResult> {
+    let script = &longrun.run;
     let script_timeout = Duration::from_millis(script.timeout as u64);
 
-    let mut child = exec_script(script)
+    let mut child = exec_script(script, &longrun.environment)
         .await
         .context("unable to execute script")?;
     let (tx, rx) = oneshot::channel();
@@ -106,14 +106,19 @@ where
 {
     let mut time_tried = 0;
     Ok(loop {
-        let script_res = start_process(&longrun.run, wait()).await?;
+        let script_res = start_process(longrun, wait()).await?;
 
         match script_res {
             ScriptResult::Exited(status) => {
                 warn!("process exited with {status}");
                 time_tried += 1;
                 if let Some(finish_script) = &longrun.finish {
-                    let _ = run_short_lived_script(finish_script, signal_wait_fun()).await;
+                    let _ = run_short_lived_script(
+                        finish_script,
+                        &longrun.environment,
+                        signal_wait_fun(),
+                    )
+                    .await;
                 }
                 if time_tried == longrun.run.max_deaths {
                     break None;
@@ -204,6 +209,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
 mod test {
     use nix::sys::signal::Signal;
     use rinit_service::types::{
+        Script,
         ScriptEnvironment,
         ScriptPrefix,
         ServiceOptions,

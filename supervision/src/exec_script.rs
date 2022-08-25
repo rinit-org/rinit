@@ -1,4 +1,8 @@
-use std::process::Stdio;
+use std::{
+    collections::HashMap,
+    env,
+    process::Stdio,
+};
 
 use anyhow::{
     Context,
@@ -17,6 +21,7 @@ use nix::{
 };
 use rinit_service::types::{
     Script,
+    ScriptEnvironment,
     ScriptPrefix,
 };
 use tokio::process::{
@@ -25,7 +30,10 @@ use tokio::process::{
 };
 use tracing::warn;
 
-pub async fn exec_script(script: &Script) -> Result<Child> {
+pub async fn exec_script(
+    script: &Script,
+    env: &ScriptEnvironment,
+) -> Result<Child> {
     let (exe, args) = match &script.prefix {
         ScriptPrefix::Bash => ("bash", vec!["-c", &script.execute]),
         ScriptPrefix::Path => {
@@ -77,6 +85,12 @@ pub async fn exec_script(script: &Script) -> Result<Child> {
             Ok(())
         })
     };
+
+    let merged_env: HashMap<String, String> = env::vars()
+        .into_iter()
+        .chain(env.contents.clone().into_iter())
+        .collect();
+    cmd.envs(merged_env);
     let child = cmd.spawn().context("unable to spawn script")?;
 
     Ok(child)

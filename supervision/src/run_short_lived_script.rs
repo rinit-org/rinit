@@ -7,7 +7,10 @@ use anyhow::{
     Context,
     Result,
 };
-use rinit_service::types::Script;
+use rinit_service::types::{
+    Script,
+    ScriptEnvironment,
+};
 use tokio::{
     select,
     sync::oneshot,
@@ -32,6 +35,7 @@ enum ScriptResult {
 
 pub async fn run_short_lived_script<F>(
     script: &Script,
+    env: &ScriptEnvironment,
     mut wait: F,
 ) -> Result<bool>
 where
@@ -41,7 +45,7 @@ where
 
     let mut time_tried = 0;
     let success = loop {
-        let mut child = exec_script(script)
+        let mut child = exec_script(script, env)
             .await
             .context("unable to execute script")?;
         let (tx, rx) = oneshot::channel();
@@ -136,20 +140,32 @@ mod tests {
     #[tokio::test]
     async fn test_run_script_success() {
         let script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
-        assert!(run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(
+            run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_run_script_failure() {
         let script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
-        assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(
+            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_run_script_timeout() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 15".to_string());
         script.timeout = 10;
-        assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(
+            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -162,14 +178,38 @@ mod tests {
         // 10 is SIGUSR1. Send a signal that won't terminate the program
         script.down_signal = 10;
         script.max_deaths = 1;
-        assert!(!run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(
+            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
     async fn test_run_script_side_effects() {
         let filename = "test_run_script_side_effects";
         let script = Script::new(ScriptPrefix::Bash, format!("touch {filename}"));
-        assert!(run_short_lived_script(&script, wait!(100)).await.unwrap());
+        assert!(
+            run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+                .await
+                .unwrap()
+        );
+        assert!(Path::new(filename).exists());
+        // cleanup
+        remove_file(filename).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_run_script_env() {
+        let filename = "test_run_script_env";
+        let script = Script::new(ScriptPrefix::Bash, "touch ${filename}".to_string());
+        let mut env = ScriptEnvironment::new();
+        env.add("filename", filename.to_string());
+        assert!(
+            run_short_lived_script(&script, &env, wait!(100))
+                .await
+                .unwrap()
+        );
         assert!(Path::new(filename).exists());
         // cleanup
         remove_file(filename).await.unwrap();
@@ -184,7 +224,11 @@ mod tests {
         let mut script = Script::new(ScriptPrefix::Path, execute);
         script.timeout = 100000;
         // Wait 50 milliseconds to give time for the file to be created
-        assert!(!run_short_lived_script(&script, wait!(1)).await.unwrap());
+        assert!(
+            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(1))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -196,6 +240,10 @@ mod tests {
         let mut script = Script::new(ScriptPrefix::Bash, execute);
         script.timeout = 100000;
         // Wait 50 milliseconds to give time for the file to be created
-        assert!(!run_short_lived_script(&script, wait!(1)).await.unwrap());
+        assert!(
+            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(1))
+                .await
+                .unwrap()
+        );
     }
 }
