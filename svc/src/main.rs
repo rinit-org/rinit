@@ -1,4 +1,5 @@
 #![feature(async_closure)]
+#![feature(let_chains)]
 
 pub mod live_service;
 pub mod live_service_graph;
