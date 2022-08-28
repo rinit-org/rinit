@@ -30,7 +30,7 @@ use rinit_ipc::request_error::{
     ServiceNotFoundSnafu,
 };
 use rinit_service::{
-    config::Config,
+    dirs::Dirs,
     graph::DependencyGraph,
     service_state::{
         IdleServiceState,
@@ -66,7 +66,7 @@ use crate::live_service::LiveService;
 
 pub struct LiveServiceGraph {
     pub live_services: IndexMap<String, LiveService>,
-    config: Config,
+    config: Dirs,
 }
 
 #[derive(Snafu, Debug)]
@@ -128,8 +128,8 @@ impl From<LiveGraphError> for RequestError {
 type Result<T> = std::result::Result<T, LiveGraphError>;
 
 impl LiveServiceGraph {
-    pub fn new(config: Config) -> Result<Self> {
-        let graph_file = config.get_graph_filename();
+    pub fn new(config: Dirs) -> Result<Self> {
+        let graph_file = config.graph_filename();
         let graph: DependencyGraph = if graph_file.exists() {
             serde_json::from_slice(&std::fs::read(graph_file).with_context(|_| ReadGraphSnafu)?)
                 .with_context(|_| JsonDeserializeSnafu)?
@@ -258,10 +258,7 @@ impl LiveServiceGraph {
             trace!("starting rsupervision for {}", live_service.node.name());
             let child = spawn_supervisor(vec![
                 supervise,
-                &format!(
-                    "--logdir={}",
-                    self.config.logdir.as_ref().unwrap().to_string_lossy()
-                ),
+                &format!("--logdir={}", self.config.logdir.to_string_lossy()),
                 &serde_json::to_string(&live_service.node.service).unwrap(),
             ])?;
             trace!("rsupervision for {} started", live_service.node.name());
@@ -312,10 +309,7 @@ impl LiveServiceGraph {
                 // TODO: Only launch the supervisor if the stop script exists
                 let mut child = spawn_supervisor(vec![
                     "--oneshot=stop",
-                    &format!(
-                        "--logdir={}",
-                        self.config.logdir.as_ref().unwrap().to_string_lossy()
-                    ),
+                    &format!("--logdir={}", self.config.logdir.to_string_lossy()),
                     &serde_json::to_string(&live_service.node.service).unwrap(),
                 ])?;
                 // Put the timeout as a fail safe to avoid blocking the svc in case of errors
@@ -455,7 +449,7 @@ impl LiveServiceGraph {
     }
 
     pub async fn reload_dependency_graph(&mut self) -> Result<()> {
-        let graph_file = self.config.get_graph_filename();
+        let graph_file = self.config.graph_filename();
         ensure!(
             graph_file.exists(),
             DependencyGraphNotFoundSnafu {

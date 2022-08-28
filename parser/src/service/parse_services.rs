@@ -6,7 +6,10 @@ use std::{
     },
 };
 
-use rinit_service::types::Service;
+use rinit_service::{
+    dirs::Dirs,
+    types::Service,
+};
 use snafu::{
     ensure,
     ResultExt,
@@ -36,16 +39,17 @@ unsafe impl Sync for ServicesParserError {}
 
 pub fn parse_services(
     services: Vec<String>,
-    service_dirs: &[PathBuf],
+    dirs: &Dirs,
     system: bool,
 ) -> Result<Vec<Service>, ServicesParserError> {
+    let service_dirs = dirs.service_directories();
     let mut services_already_parsed = services.clone().into_iter().collect::<HashSet<String>>();
     let mut results = Vec::new();
     let mut to_parse = services
         .into_iter()
         .map(|service| {
             // If we don't find the services passed as args on the system, return an error
-            if let Some(file) = get_service_file(&service, service_dirs, system) {
+            if let Some(file) = get_service_file(&service, &service_dirs, system) {
                 Ok((service, file))
             } else {
                 Err(ServicesParserError::CouldNotFindService { service })
@@ -63,7 +67,7 @@ pub fn parse_services(
         // handle the error
         to_parse.extend(service.dependencies().iter().filter_map(|service| {
             if services_already_parsed.insert(service.clone()) {
-                get_service_file(service, service_dirs, system).map(|file| (service.clone(), file))
+                get_service_file(service, &service_dirs, system).map(|file| (service.clone(), file))
             } else {
                 None
             }

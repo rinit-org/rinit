@@ -27,13 +27,13 @@ use command::{
     StatusCommand,
     StopCommand,
 };
-use rinit_service::config::Config;
+use rinit_service::dirs::Dirs;
 
 // This has to be async just for AsyncConnection
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
-    let config = Config::new(None)?;
+    let config = Dirs::new(None)?;
 
     match opts.subcmd {
         Command::Enable(enable_command) => enable_command.run(config).await?,

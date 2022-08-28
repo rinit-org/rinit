@@ -985,6 +985,7 @@ dependencies = [
  "clap",
  "futures",
  "itertools",
+ "libc",
  "rinit-ipc",
  "rinit-parser",
  "rinit-service",

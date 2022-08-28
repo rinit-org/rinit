@@ -16,7 +16,7 @@ use rinit_ipc::{
 };
 use rinit_service::types::RunLevel;
 
-use crate::Config;
+use crate::Dirs;
 
 #[derive(Parser)]
 pub struct StopCommand {
@@ -28,7 +28,7 @@ pub struct StopCommand {
 impl StopCommand {
     pub async fn run(
         self,
-        _config: Config,
+        _config: Dirs,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(

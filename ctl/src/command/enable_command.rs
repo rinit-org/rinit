@@ -16,7 +16,7 @@ use rinit_service::{
     types::RunLevel,
 };
 
-use crate::Config;
+use crate::Dirs;
 
 #[derive(Parser)]
 pub struct EnableCommand {
@@ -31,14 +31,14 @@ pub struct EnableCommand {
 impl EnableCommand {
     pub async fn run(
         self,
-        config: Config,
+        dirs: Dirs,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(
             !(1..self.services.len()).any(|i| self.services[i..].contains(&self.services[i - 1])),
             "duplicated service found"
         );
-        let graph_file = config.get_graph_filename();
+        let graph_file = dirs.graph_filename();
         let mut graph: DependencyGraph = if graph_file.exists() {
             serde_json::from_slice(
                 &fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
@@ -49,13 +49,12 @@ impl EnableCommand {
             DependencyGraph::new()
         };
 
+        let uid = unsafe { libc::getuid() };
+        let system_mode = uid == 0;
+
         if self.atomic_changes {
-            let services = parse_services(
-                self.services.clone(),
-                &config.service_directories,
-                config.system,
-            )
-            .context("unable to parse services")?;
+            let services = parse_services(self.services.clone(), &dirs, system_mode)
+                .context("unable to parse services")?;
             // The dependency graph ensure that all the dependencies have the same runlevel
             // So we just check that we the services passed on the command line are the
             // same runlevel requested
@@ -80,14 +79,10 @@ impl EnableCommand {
             println!("All the services have been enabled.");
         } else {
             for service in self.services {
-                let services = parse_services(
-                    vec![service.clone()],
-                    &config.service_directories,
-                    config.system,
-                )
-                .with_context(|| {
-                    format!("unable to parse service {service} and its dependencies")
-                })?;
+                let services = parse_services(vec![service.clone()], &dirs, system_mode)
+                    .with_context(|| {
+                        format!("unable to parse service {service} and its dependencies")
+                    })?;
                 ensure!(
                     services
                         .iter()

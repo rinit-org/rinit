@@ -15,7 +15,7 @@ use rinit_service::{
     types::RunLevel,
 };
 
-use crate::Config;
+use crate::Dirs;
 
 #[derive(Parser)]
 pub struct DisableCommand {
@@ -29,14 +29,14 @@ pub struct DisableCommand {
 impl DisableCommand {
     pub async fn run(
         self,
-        config: Config,
+        config: Dirs,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(
             !(1..self.services.len()).any(|i| self.services[i..].contains(&self.services[i - 1])),
             "duplicated service found"
         );
-        let graph_file = config.get_graph_filename();
+        let graph_file = config.graph_filename();
         ensure!(
             graph_file.exists(),
             "the graph has not been initialized yet"

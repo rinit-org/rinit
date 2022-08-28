@@ -10,7 +10,7 @@ use rinit_ipc::{
 };
 use rinit_service::types::RunLevel;
 
-use crate::Config;
+use crate::Dirs;
 
 #[derive(Parser)]
 pub struct StartCommand {
@@ -22,7 +22,7 @@ pub struct StartCommand {
 impl StartCommand {
     pub async fn run(
         self,
-        _config: Config,
+        _config: Dirs,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(
