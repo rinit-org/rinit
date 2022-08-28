@@ -81,7 +81,10 @@ impl Script {
     pub const DEFAULT_TIMEOUT: u32 = 3000;
     pub const DEFAULT_TIMEOUT_KILL: u32 = 3000;
     pub const DEFAULT_MAX_DEATHS: u8 = 3;
-    pub const DEFAULT_DOWN_SIGNAL: i32 = libc::SIGTERM;
+    // SIGHUP is the only signal that is handled by shells and that is forwarded to
+    // children as well. Sending SIGTERM would only kill the shell and leave the
+    // children runnning
+    pub const DEFAULT_DOWN_SIGNAL: i32 = libc::SIGHUP;
 
     const fn default_timeout() -> u32 {
         Self::DEFAULT_TIMEOUT
