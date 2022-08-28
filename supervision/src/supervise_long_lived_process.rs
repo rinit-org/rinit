@@ -253,7 +253,7 @@ mod test {
     #[tokio::test]
     async fn test_start_process_failure() {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 0".to_string());
-        script.timeout = 5;
+        script.timeout = 50;
         let longrun = Longrun {
             name: "test".to_string(),
             run: script,
@@ -269,7 +269,7 @@ mod test {
 
     #[tokio::test]
     async fn test_supervise() {
-        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.1".to_string());
+        let mut script = Script::new(ScriptPrefix::Bash, "sleep 0.3".to_string());
         script.timeout = 1;
         let longrun = Longrun {
             name: "test".to_string(),
