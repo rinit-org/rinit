@@ -16,7 +16,7 @@ use snafu::{
 };
 use xdg::BaseDirectories;
 
-const DIRS_FILE_NAME: &'static str = "dirs.conf";
+const DIRS_FILE_NAME: &str = "dirs.conf";
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct CustomDirs {
@@ -125,7 +125,7 @@ impl Dirs {
     }
 
     fn new_system_dirs() -> Self {
-        const DEFAULT_DIRS: &'static str = include_str!("../../dirs.conf");
+        const DEFAULT_DIRS: &str = include_str!("../../dirs.conf");
         toml::from_str(DEFAULT_DIRS).unwrap()
     }
 
@@ -133,7 +133,7 @@ impl Dirs {
         let system_config = Dirs::new_system_dirs();
         Ok(Dirs {
             path: env::var("PATH")
-                .map(|path| PathBuf::from(path))
+                .map(PathBuf::from)
                 .unwrap_or_else(|_| system_config.path),
             configdir: xdg.get_config_home(),
             rundir: xdg
