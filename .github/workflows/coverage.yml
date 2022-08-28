@@ -15,19 +15,19 @@ jobs:
         with:
           toolchain: nightly
           override: true
+          components: llvm-tools-preview
 
-      - name: Install cargo-tarpaulin binary crate
-        uses: actions-rs/install@v0.1
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Generate code coverage
+        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
         with:
-          crate: cargo-tarpaulin
-          version: latest
-          use-tool-cache: true
-
-      - name: Generate coverage
-        uses: actions-rs/cargo@v1
-        with:
-          command: tarpaulin
-          args: --verbose --all-features --workspace --out Xml
-
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v1
+          files: lcov.info
+          fail_ci_if_error: true
