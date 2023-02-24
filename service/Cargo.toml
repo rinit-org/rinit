@@ -7,10 +7,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-indexmap = { version = "1.9.1", features = [ "serde" ] }
-libc = "0.2.126"
-serde = { version = "1.0.141", features = ["derive"] }
-serde_with = "2.0.0"
-snafu = "0.7.1"
-toml = "0.5.9"
-xdg = "2.4.1"
+indexmap = { version = "1.9.3", features = [ "serde" ] }
+libc = "0.2.144"
+serde = { version = "1.0.162", features = ["derive"] }
+serde_with = "3.0.0"
+snafu = "0.7.4"
+toml = "0.7.3"
+xdg = "2.5.0"

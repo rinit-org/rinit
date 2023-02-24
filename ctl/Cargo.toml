@@ -8,13 +8,13 @@ edition = "2021"
 rinit-ipc= { path = "../ipc" }
 rinit-parser = { path = "../parser" }
 rinit-service = { path = "../service" }
-anyhow = "1.0.60"
-clap = { version = "3.2.16", features = ["derive"] }
-itertools = "0.10.3"
-futures = "0.3.21"
-libc = "0.2.126"
-serde_json = "1.0.82"
-tokio = "1.20.1"
+anyhow = "1.0.71"
+clap = { version = "4.2.7", features = ["derive"] }
+itertools = "0.10.5"
+futures = "0.3.28"
+libc = "0.2.144"
+serde_json = "1.0.96"
+tokio = "1.28.0"
 
 [[bin]]
 name = "rctl"

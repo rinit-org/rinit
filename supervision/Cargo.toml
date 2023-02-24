@@ -7,19 +7,19 @@ edition = "2021"
 [dependencies]
 rinit-service = { path = "../service" }
 rinit-ipc = { path = "../ipc" }
-anyhow = { version = "1.0.60", default_features = false }
-flexi_logger = { version = "0.22.5", default_features = false, features = ["colors", "compress", "trc", "use_chrono_for_offset"] }
-futures = "0.3.21"
+anyhow = { version = "1.0.71", default_features = false }
+flexi_logger = { version = "0.25.4", default_features = false, features = ["colors", "compress", "trc"] }
+futures = "0.3.28"
 lazy_static = "1.4.0"
-lexopt = "0.2.1"
-libc = "0.2.126"
-nix = "0.24.2"
-remoc = "0.10.0"
-serde_json = "1.0.82"
-snafu = "0.7.1"
-tokio = { version = "1.20.1", features = [ "fs", "macros", "net", "process", "signal" ] }
-tracing = "0.1.36"
-tracing-subscriber = { version = "0.3.15", default_features = false }
+lexopt = "0.3.0"
+libc = "0.2.144"
+nix = "0.26.2"
+remoc = "0.10.3"
+serde_json = "1.0.96"
+snafu = "0.7.4"
+tokio = { version = "1.28.0", features = [ "fs", "macros", "net", "process", "signal" ] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", default_features = false }
 
 [dev-dependencies]
 cargo-husky = { version = "1.5.0", features = [ "run-cargo-clippy", "run-cargo-check", "run-cargo-fmt" ] }
