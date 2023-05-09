@@ -45,7 +45,7 @@ unsafe impl Send for ParseServiceError {}
 type Result<T, E = ParseServiceError> = std::result::Result<T, E>;
 
 pub fn parse_service(path: &Path) -> Result<Service> {
-    let file = fs::read_to_string(&path).with_context(|_| {
+    let file = fs::read_to_string(path).with_context(|_| {
         OpenFileSnafu {
             path: path.to_owned(),
         }

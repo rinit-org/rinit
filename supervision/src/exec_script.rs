@@ -48,7 +48,7 @@ pub async fn exec_script(
         }
         ScriptPrefix::Sh => ("sh", vec!["-c", &script.execute]),
     };
-    let mut cmd = Command::new(&exe);
+    let mut cmd = Command::new(exe);
     // TODO: Use a proper splitting function
     cmd.args(args);
     if let Some(user) = &script.user {
@@ -87,7 +87,6 @@ pub async fn exec_script(
     };
 
     let merged_env: HashMap<String, String> = env::vars()
-        .into_iter()
         .chain(env.contents.clone().into_iter())
         .collect();
     cmd.envs(merged_env);
