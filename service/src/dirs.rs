@@ -1,10 +1,15 @@
 use std::{
     env,
-    fs,
-    io,
     path::PathBuf,
 };
 
+use figment::{
+    providers::{
+        self,
+        Format,
+    },
+    Figment,
+};
 use serde::{
     Deserialize,
     Serialize,
@@ -18,22 +23,17 @@ use xdg::BaseDirectories;
 
 const DIRS_FILE_NAME: &str = "dirs.conf";
 
-#[derive(Serialize, Deserialize, Default)]
-pub struct CustomDirs {
-    pub path: Option<PathBuf>,
-    pub configdir: Option<PathBuf>,
-    pub rundir: Option<PathBuf>,
-    pub datadir: Option<PathBuf>,
-    pub logdir: Option<PathBuf>,
-    pub profile_name: Option<String>,
-}
-
-#[derive(Default, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Dirs {
+    #[serde(default)]
     pub path: PathBuf,
+    #[serde(default)]
     pub configdir: PathBuf,
+    #[serde(default)]
     pub rundir: PathBuf,
+    #[serde(default)]
     pub datadir: PathBuf,
+    #[serde(default)]
     pub logdir: PathBuf,
 }
 
@@ -43,18 +43,6 @@ pub enum DirsError {
     BaseDirectoriesError { source: xdg::BaseDirectoriesError },
     #[snafu(display("unable to find configuration file {:?}", config_file))]
     DirsFileNotFound { config_file: PathBuf },
-    #[snafu(display("unable to read configuration file {:?}", config_path))]
-    DirsReadError {
-        config_path: PathBuf,
-        source: io::Error,
-    },
-    #[snafu(display("unable to parse configuration file {:?}", config_path))]
-    DirsFormatError {
-        config_path: PathBuf,
-        source: toml::de::Error,
-    },
-    #[snafu(display("unable to convert {:?} to string", path))]
-    StringConversionError { path: PathBuf },
 }
 
 type Result<T, E = DirsError> = std::result::Result<T, E>;
@@ -67,37 +55,34 @@ impl Dirs {
     pub fn new(opts_dirs: Option<PathBuf>) -> Result<Self> {
         let uid = unsafe { libc::getuid() };
         // Always initialize an xdg var, we will need it for user values
-        // This could also be created as a static, using lazy_static, but local variable
-        // is preferred
+        // In case this is the system mode, xdg does not create any dir, no harm done
+        // Note: This could also be created as a static variable, using lazy_static, but
+        // local variable is preferred
         let xdg: BaseDirectories =
             BaseDirectories::with_prefix("rinit").context(BaseDirectoriesSnafu {})?;
 
-        // Create a new default directories configuration
-        let mut dirs = if uid == 0 {
-            Self::new_system_dirs()
+        let mut dirs = Figment::new();
+        // Get the default configuration depending on the mode
+        if uid == 0 {
+            dirs = dirs
+                .merge(providers::Toml::string(
+                    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../dirs.conf")),
+                ))
+                // Read the system configuration
+                .merge(providers::Toml::file(
+                    Self::new_system_dirs().configdir.join(DIRS_FILE_NAME),
+                ));
         } else {
-            Self::new_user_dirs(&xdg)?
-        };
-
-        // Calculate the path where the custom config should be
-        let custom_dirs_path = dirs.configdir.join(DIRS_FILE_NAME);
-
-        // If there is a custom config
-        if custom_dirs_path.exists() {
-            // Read and
-            let custom_dirs =
-                toml::from_str(&fs::read_to_string(&custom_dirs_path).with_context(|_| {
-                    DirsReadSnafu {
-                        config_path: custom_dirs_path.clone(),
-                    }
-                })?)
-                .with_context(|_| {
-                    DirsFormatSnafu {
-                        config_path: custom_dirs_path,
-                    }
-                })?;
-            dirs.apply_custom_config(custom_dirs);
+            dirs = dirs.merge(providers::Toml::string(
+                &toml::to_string(&Self::new_user_dirs(&xdg)?).unwrap(),
+            ));
+            // Configuration from /etc/rinit/dirs.conf is not read in user mode
+            // because the values are completely different.
+            // TODO: Add a /etc/rinit/user/env with RINIT_ env values
         }
+
+        // Read the configuration variables from the env
+        dirs = dirs.merge(providers::Env::prefixed("RINIT_"));
 
         // Read the configuration passed in the command line
         if let Some(opts_dirs_path) = opts_dirs {
@@ -107,28 +92,24 @@ impl Dirs {
                     config_file: opts_dirs_path
                 }
             );
-            let opts_dirs =
-                toml::from_str(&fs::read_to_string(&opts_dirs_path).with_context(|_| {
-                    DirsReadSnafu {
-                        config_path: opts_dirs_path.clone(),
-                    }
-                })?)
-                .with_context(|_| {
-                    DirsFormatSnafu {
-                        config_path: opts_dirs_path,
-                    }
-                })?;
-            dirs.apply_custom_config(opts_dirs);
+            dirs = dirs.merge(providers::Toml::file(opts_dirs_path));
         }
 
-        Ok(dirs)
+        Ok(dirs.extract().unwrap())
     }
 
+    /// Get the default directories for the system mode
     fn new_system_dirs() -> Self {
-        const DEFAULT_DIRS: &str = include_str!("../../dirs.conf");
-        toml::from_str(DEFAULT_DIRS).unwrap()
+        // The default hardcoded configuration is read from dirs.conf
+        toml::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../dirs.conf"
+        )))
+        .unwrap()
     }
 
+    /// Get the default directories for the user mode
+    /// These are generated at runtime using xdg directory standard
     fn new_user_dirs(xdg: &BaseDirectories) -> Result<Self> {
         let system_config = Dirs::new_system_dirs();
         Ok(Dirs {
@@ -143,24 +124,6 @@ impl Dirs {
             datadir: xdg.get_data_home(),
             logdir: xdg.get_state_home(),
         })
-    }
-
-    pub fn apply_custom_config(
-        &mut self,
-        config: CustomDirs,
-    ) {
-        if let Some(path) = config.path {
-            self.path = path;
-        }
-        if let Some(rundir) = config.rundir {
-            self.rundir = rundir;
-        }
-        if let Some(datadir) = config.datadir {
-            self.datadir = datadir;
-        }
-        if let Some(logdir) = config.logdir {
-            self.logdir = logdir;
-        }
     }
 
     pub fn service_directories(&self) -> Vec<PathBuf> {
