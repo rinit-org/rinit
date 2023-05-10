@@ -38,22 +38,22 @@ pub fn log_buf(
     // If there is output remaining from the latest read call
     // and there is a newline in buf
     if let Some(index) = buf.find('\n').filter(|_| !previous_line.is_empty()) {
-                    // print the resulting line
-                    info!("[{stdio}] {previous_line}{}", &buf[..index]);
-                    previous_line.clear();
-                    last_newline = index + 1;
-                }
+        // print the resulting line
+        info!("[{stdio}] {previous_line}{}", &buf[..index]);
+        previous_line.clear();
+        last_newline = index + 1;
+    }
 
     // iterate all other lines and stop when either the newline found
     // was the last character or the there are no more newlines
     while let Some(index) = buf.get(last_newline..).and_then(|b| b.find('\n')) {
-                    // the index returned from find refers to new &str buf[last_newline..]
-                    // so we need to port it back for buf, by adding last_new_line to it
-                    let index = last_newline + index;
-                    // print every line
-                    info!("[{stdio}] {}", &buf[last_newline..index]);
-                    last_newline = index + 1;
-                }
+        // the index returned from find refers to new &str buf[last_newline..]
+        // so we need to port it back for buf, by adding last_new_line to it
+        let index = last_newline + index;
+        // print every line
+        info!("[{stdio}] {}", &buf[last_newline..index]);
+        last_newline = index + 1;
+    }
 
     // if there are characters after the last newline, store them
     // so that they can be print in the next loop
