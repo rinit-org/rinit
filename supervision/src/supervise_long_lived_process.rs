@@ -189,7 +189,7 @@ pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
             running_script.logger_stop.send(()).unwrap();
         }
         running_script.logger.await??;
-        if let Some(res) = res && matches!(res, ScriptResult::SignalReceived) {
+        if let Some(ScriptResult::SignalReceived) = res {
             break;
         }
     }
