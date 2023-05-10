@@ -369,18 +369,17 @@ impl LiveServiceGraph {
                             for dependent in dependents {
                                 // Wait until the dependent is down
                                 // TODO: Log
-                                while let Ok(state) = dependent.tx.subscribe().recv().await &&
-                                    state == IdleServiceState::Up { }
+                                while let Ok(IdleServiceState::Up) = dependent.tx.subscribe().recv().await {
+                                }
                             }
                             self.stop_service_impl(live_service).await.unwrap();
 
                             // Self::stop_service only spawn the supervisor, we don't know if the
                             // service has stopped yet. Get the state of each one
-                            if *live_service.state.borrow()
-                                == ServiceState::Idle(IdleServiceState::Up)
-                                && let Ok(state) = live_service.tx.subscribe().recv().await &&
-                                    state == IdleServiceState::Up {
+                            if *live_service.state.borrow() == ServiceState::Idle(IdleServiceState::Up) {
+                                if let Ok(IdleServiceState::Up) = live_service.tx.subscribe().recv().await {
                                         warn!("service {service} didn't exit successfully");
+                                }
                             }
                         }
                     });
