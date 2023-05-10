@@ -1,6 +1,6 @@
 combine_control_expr = false
 condense_wildcard_suffixes = true
-fn_args_layout = "Vertical"
+fn_params_layout = "Vertical"
 force_multiline_blocks = true
 format_strings = true
 imports_layout = "Vertical"
