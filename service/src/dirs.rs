@@ -81,9 +81,6 @@ impl Dirs {
             // TODO: Add a /etc/rinit/user/env with RINIT_ env values
         }
 
-        // Read the configuration variables from the env
-        dirs = dirs.merge(providers::Env::prefixed("RINIT_"));
-
         // Read the configuration passed in the command line
         if let Some(opts_dirs_path) = opts_dirs {
             ensure!(
@@ -94,6 +91,9 @@ impl Dirs {
             );
             dirs = dirs.merge(providers::Toml::file(opts_dirs_path));
         }
+
+        // Read the configuration variables from the env
+        dirs = dirs.merge(providers::Env::prefixed("RINIT_"));
 
         Ok(dirs.extract().unwrap())
     }
