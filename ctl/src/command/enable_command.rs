@@ -182,14 +182,19 @@ impl EnableCommand {
                     conn.send_request(request).await??;
 
                     if self.start {
-                        let res = start_service(conn, &service, self.runlevel).await;
-                        if self.stop_at_errors {
-                            res.with_context(|| format!("Could not start service {service}"))?;
+                        let res = start_service(conn, &service, self.runlevel)
+                            .await
+                            .with_context(|| format!("Could not start service {service}"));
+                        if let Err(err) = res {
+                            if self.stop_at_errors {
+                                eprintln!("{err}");
+                            } else {
+                                println!("Service {service} failed to start.");
+                                success = false;
+                            }
                         } else {
-                            println!("Service {service} failed to start.");
-                            success = false;
+                            println!("Service {service} started successfully.");
                         }
-                        println!("Service {service} started successfully.");
                     }
                 }
             }
