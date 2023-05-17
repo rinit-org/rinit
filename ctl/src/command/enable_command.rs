@@ -108,7 +108,7 @@ impl EnableCommand {
                 // If the user asked us to start the services, try to start them one by one
                 if self.start {
                     for service in &self.services {
-                        if start_service(&mut conn, &service, self.runlevel).await? {
+                        if start_service(&mut conn, service, self.runlevel).await? {
                             println!("Service {service} started successfully.");
                         } else {
                             println!("Service {service} failed to start.");
