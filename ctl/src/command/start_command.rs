@@ -3,14 +3,13 @@ use anyhow::{
     Result,
 };
 use clap::Parser;
-use rinit_ipc::{
-    AsyncConnection,
-    Reply,
-    Request,
-};
+use rinit_ipc::AsyncConnection;
 use rinit_service::types::RunLevel;
 
-use crate::Dirs;
+use crate::{
+    util::start_service,
+    Dirs,
+};
 
 #[derive(Parser)]
 pub struct StartCommand {
@@ -33,30 +32,11 @@ impl StartCommand {
         let mut conn = AsyncConnection::new_host_address().await?;
         let mut error = false;
         for service in self.services {
-            let request = Request::StartService {
-                service: service.clone(),
-                runlevel: self.runlevel,
-            };
-            let res = conn.send_request(request).await?;
-
-            match res {
-                Ok(reply) => {
-                    match reply {
-                        Reply::Success(success) => {
-                            if success {
-                                println!("Service {service} started successfully.");
-                            } else {
-                                println!("Service {service} failed to start.");
-                                error = true;
-                            }
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    error = true;
-                }
+            if start_service(&mut conn, &service, self.runlevel).await? {
+                println!("Service {service} started successfully.");
+            } else {
+                println!("Service {service} failed to start.");
+                error = true;
             }
         }
 

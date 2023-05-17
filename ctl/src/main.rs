@@ -1,6 +1,7 @@
 #![feature(async_closure)]
 
 mod command;
+mod util;
 
 use anyhow::Result;
 use clap::Parser;
