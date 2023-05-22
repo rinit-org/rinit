@@ -64,6 +64,7 @@ pub fn log_buf(
     Ok(())
 }
 
+/// We need the handle open, otherwise the tracing subscriber won't work
 pub async fn log_output(
     mut stdout: ChildStdout,
     mut stderr: ChildStderr,
@@ -95,7 +96,7 @@ pub async fn log_output(
                             warn!("{err}");
                         }
                     }
-                    Err(err) => Err(err)?,
+                    Err(err) => Err(err).unwrap(),
                 }
             },
             read = async {
@@ -116,7 +117,7 @@ pub async fn log_output(
                             warn!("{err}");
                         }
                     }
-                    Err(err) => Err(err)?,
+                    Err(err) => Err(err).unwrap(),
                 }
             }
             _ = &mut rx => {

@@ -49,6 +49,8 @@ where
     SendError { source: rch::base::SendError<T> },
     #[snafu(display("no reply received for request {request:?}"))]
     NoReplyReceived { request: Request },
+    #[snafu(display("could not accept connection"))]
+    ListenError { source: std::io::Error },
 }
 
 // Ideally there should be async and sync connection, but

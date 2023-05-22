@@ -1,5 +1,8 @@
 use rinit_service::{
-    service_state::ServiceState,
+    service_state::{
+        IdleServiceState,
+        ServiceState,
+    },
     types::RunLevel,
 };
 use serde::{
@@ -9,13 +12,13 @@ use serde::{
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {
-    ServiceIsUp(String, bool),
-    ServicesStatus(),
+    UpdateServiceStatus(String, IdleServiceState),
+    ServicesStatus,
     ServiceStatus(String),
     StartService { service: String, runlevel: RunLevel },
     StopService { service: String, runlevel: RunLevel },
-    StartAllServices(RunLevel),
-    StopAllServices(RunLevel),
+    StartAllServices,
+    StopAllServices,
     ReloadGraph,
 }
 

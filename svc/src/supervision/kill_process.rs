@@ -18,7 +18,7 @@ use tokio::{
 use tracing::warn;
 
 pub async fn kill_process(
-    mut child: Child,
+    child: &mut Child,
     down_signal: i32,
     timeout_kill: u32,
 ) -> Result<()> {

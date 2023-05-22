@@ -6,7 +6,7 @@ use serde::{
 use super::RunLevel;
 
 /// Store options for Longrun and Oneshot
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ServiceOptions {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<String>,

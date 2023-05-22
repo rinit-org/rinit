@@ -3,7 +3,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ScriptEnvironment {
     #[serde(default)]
     pub contents: Vec<(String, String)>,

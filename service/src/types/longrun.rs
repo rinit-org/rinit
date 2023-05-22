@@ -7,7 +7,7 @@ use serde_with::skip_serializing_none;
 use super::*;
 
 #[skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Longrun {
     pub name: String,
     pub run: Script,

@@ -5,29 +5,23 @@ use std::{
         TryReserveError,
     },
     io,
-    process::Stdio,
-    time::Duration,
 };
 
 use async_recursion::async_recursion;
 use async_scoped_local::TokioScope;
 use indexmap::IndexMap;
-use nix::{
-    sys::signal::{
-        kill,
-        Signal,
+use rinit_ipc::{
+    request_error::{
+        DependencyFailedToStartSnafu,
+        DependencyGraphNotFoundSnafu,
+        DependentsStillRunningSnafu,
+        LogicError,
+        RequestError,
+        RunLevelMustMatchSnafu,
+        ServiceFailedToStartSnafu,
+        ServiceNotFoundSnafu,
     },
-    unistd::Pid,
-};
-use rinit_ipc::request_error::{
-    DependencyFailedToStartSnafu,
-    DependencyGraphNotFoundSnafu,
-    DependentsStillRunningSnafu,
-    LogicError,
-    RequestError,
-    RunLevelMustMatchSnafu,
-    ServiceFailedToStartSnafu,
-    ServiceNotFoundSnafu,
+    Request,
 };
 use rinit_service::{
     config::Config,
@@ -37,27 +31,17 @@ use rinit_service::{
         ServiceState,
         TransitioningServiceState,
     },
-    types::{
-        RunLevel,
-        Service,
-    },
+    types::RunLevel,
 };
 use snafu::{
     ensure,
-    OptionExt,
     ResultExt,
     Snafu,
 };
-use tokio::{
-    process::{
-        Child,
-        Command,
-    },
-    time::timeout,
-};
+use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::{
-    debug,
+    info,
     trace,
     warn,
 };
@@ -67,6 +51,7 @@ use crate::live_service::LiveService;
 pub struct LiveServiceGraph {
     pub live_services: IndexMap<String, LiveService>,
     config: Config,
+    send: mpsc::Sender<Request>,
 }
 
 #[derive(Snafu, Debug)]
@@ -128,7 +113,10 @@ impl From<LiveGraphError> for RequestError {
 type Result<T> = std::result::Result<T, LiveGraphError>;
 
 impl LiveServiceGraph {
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(
+        config: Config,
+        send: mpsc::Sender<Request>,
+    ) -> Result<Self> {
         let graph_file = config.dirs.graph_filename();
         let graph: DependencyGraph = if graph_file.exists() {
             serde_json::from_slice(&std::fs::read(graph_file).with_context(|_| ReadGraphSnafu)?)
@@ -143,6 +131,7 @@ impl LiveServiceGraph {
                 .map(|(name, node)| (name, LiveService::new(node)))
                 .collect(),
             config,
+            send,
         })
     }
 
@@ -201,7 +190,26 @@ impl LiveServiceGraph {
                 TransitioningServiceState::Starting,
             ));
             self.start_dependencies(live_service).await?;
-            self.start_service_impl(live_service).await?;
+            self.wait_on_deps_starting(live_service).await?;
+
+            // Call the closure and let the new subscriber collect all the tracings
+            let success = live_service
+                .start_service(&self.config.dirs.logdir, self.send.clone())
+                .await;
+            if let Err(err) = self
+                .send
+                .send(Request::UpdateServiceStatus(
+                    live_service.node.name().to_string(),
+                    if success {
+                        IdleServiceState::Up
+                    } else {
+                        IdleServiceState::Down
+                    },
+                ))
+                .await
+            {
+                warn!("Could not update service status: {err}");
+            }
         }
         let state = live_service.wait_idle_state().await;
         ensure!(
@@ -240,35 +248,6 @@ impl LiveServiceGraph {
         Ok(())
     }
 
-    async fn start_service_impl(
-        &self,
-        live_service: &LiveService,
-    ) -> Result<()> {
-        trace!("waiting for dependencies of {}", live_service.node.name());
-        self.wait_on_deps_starting(live_service).await?;
-        trace!("dependencies of {} started", live_service.node.name());
-        let res = match &live_service.node.service {
-            Service::Oneshot(_) => Some("--oneshot=start"),
-            Service::Longrun(_) => Some("--longrun=start"),
-            Service::Bundle(_) => None,
-            Service::Virtual(_) => None,
-        };
-        if let Some(supervise) = res {
-            // TODO: Add logging and remove unwrap
-            trace!("starting rsupervision for {}", live_service.node.name());
-            let child = spawn_supervisor(vec![
-                supervise,
-                &format!("--logdir={}", self.config.dirs.logdir.to_string_lossy()),
-                &serde_json::to_string(&live_service.node.service).unwrap(),
-            ])?;
-            trace!("rsupervision for {} started", live_service.node.name());
-
-            live_service.child.replace(Some(child));
-        }
-
-        Ok(())
-    }
-
     async fn wait_on_deps_starting(
         &self,
         live_service: &LiveService,
@@ -294,62 +273,20 @@ impl LiveServiceGraph {
     ) -> Result<()> {
         let dependents = self.get_dependents(live_service);
         Self::wait_on_dependents_stopping(live_service.node.name(), &dependents).await?;
-        self.stop_service_impl(live_service).await
-    }
-
-    async fn stop_service_impl(
-        &self,
-        live_service: &LiveService,
-    ) -> Result<()> {
         live_service.state.replace(ServiceState::Transitioning(
             TransitioningServiceState::Stopping,
         ));
-        match &live_service.node.service {
-            Service::Oneshot(_) => {
-                // TODO: Only launch the supervisor if the stop script exists
-                let mut child = spawn_supervisor(vec![
-                    "--oneshot=stop",
-                    &format!("--logdir={}", self.config.dirs.logdir.to_string_lossy()),
-                    &serde_json::to_string(&live_service.node.service).unwrap(),
-                ])?;
-                // Put the timeout as a fail safe to avoid blocking the svc in case of errors
-                let timeout_res = timeout(
-                    // Put an arbitrary large value here, we know that the supervisor will return
-                    // almost immediately
-                    Duration::from_millis(500),
-                    child.wait(),
-                )
-                .await;
-                if let Ok(exit_status) = timeout_res {
-                    exit_status.with_context(|_| WaitSnafu)?;
-                }
-            }
-            Service::Longrun(longrun) => {
-                if let Some(mut child) = live_service.child.take() {
-                    debug!("sending SIGTERM to {} supervisor", live_service.node.name());
-                    kill(Pid::from_raw(child.id().unwrap() as i32), Signal::SIGTERM)
-                        .with_context(|_| SendSignalSnafu)?;
-                    let timeout_res = timeout(
-                        Duration::from_millis(
-                            (longrun.run.get_maximum_time()
-                                + longrun
-                                    .finish
-                                    .as_ref()
-                                    .map_or(0, |finish| finish.get_maximum_time()))
-                            .into(),
-                        ),
-                        child.wait(),
-                    )
-                    .await;
-                    if let Ok(exit_status) = timeout_res {
-                        exit_status.with_context(|_| WaitSnafu)?;
-                    }
-                }
-            }
-            Service::Bundle(_) => {}
-            Service::Virtual(_) => {}
+        live_service.stop_service(&self.config.dirs.logdir).await;
+        if let Err(err) = self
+            .send
+            .send(Request::UpdateServiceStatus(
+                live_service.node.name().to_string(),
+                IdleServiceState::Down,
+            ))
+            .await
+        {
+            warn!("Could not update service status: {err}");
         }
-
         Ok(())
     }
 
@@ -374,7 +311,7 @@ impl LiveServiceGraph {
                                 {
                                 }
                             }
-                            self.stop_service_impl(live_service).await.unwrap();
+                            self.stop_service(live_service).await.unwrap();
 
                             // Self::stop_service only spawn the supervisor, we don't know if the
                             // service has stopped yet. Get the state of each one
@@ -540,6 +477,7 @@ impl LiveServiceGraph {
         name: &str,
         state: IdleServiceState,
     ) -> Result<()> {
+        info!("Service {name} is {state}");
         let live_service = self.get_service(name)?;
         live_service.update_state(ServiceState::Idle(state));
         live_service.tx.send(state).unwrap();
@@ -550,12 +488,7 @@ impl LiveServiceGraph {
         &mut self,
         name: &str,
     ) -> Result<()> {
-        let live_service = self.live_services.get(name).with_context(|| {
-            ServiceNotFoundSnafu {
-                service: name.to_string(),
-            }
-        })?;
-
+        let live_service = self.get_service(name)?;
         // the service is marked for removal
         if live_service.remove {
             // remove in O(1)
@@ -585,21 +518,4 @@ impl LiveServiceGraph {
 
         Ok(())
     }
-}
-
-fn spawn_supervisor(args: Vec<&str>) -> Result<Child> {
-    let mut cmd = Command::new("rsupervision");
-    cmd.args(args).stdin(Stdio::null());
-    Ok(loop {
-        let res = cmd.spawn();
-        match res {
-            Ok(child) => break child,
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
-            // rsupervision is not in PATH, notify the user
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                RSupervisionNotInPathSnafu {}.fail()?
-            }
-            Err(_) => res.map(|_| ()).context(SpawnSnafu {})?,
-        }
-    })
 }

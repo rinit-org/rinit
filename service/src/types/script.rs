@@ -7,7 +7,7 @@ use serde::{
 use serde_with::skip_serializing_none;
 use snafu::Snafu;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum ScriptPrefix {
     Bash,
     Path,
@@ -38,7 +38,7 @@ impl TryFrom<String> for ScriptPrefix {
 }
 
 #[skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Script {
     /// How the script will executed, i.e. by passing the program to execvp, by
     /// calling bash, etc..

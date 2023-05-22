@@ -1,9 +1,22 @@
 use std::{
     cell::RefCell,
+    path::Path,
     time::Duration,
 };
 
+use flexi_logger::{
+    writers::{
+        FileLogWriter,
+        FileLogWriterHandle,
+    },
+    Cleanup,
+    Criterion,
+    FileSpec,
+    Naming,
+    WriteMode,
+};
 use futures::future::BoxFuture;
+use rinit_ipc::Request;
 use rinit_service::{
     graph::Node,
     service_state::{
@@ -14,13 +27,26 @@ use rinit_service::{
     types::Service,
 };
 use tokio::{
-    process::Child,
-    sync::broadcast::{
-        self,
-        Receiver,
-        Sender,
+    sync::{
+        broadcast,
+        mpsc,
+        watch,
     },
+    task,
     time::timeout,
+};
+use tracing::{
+    error,
+    instrument::WithSubscriber,
+    metadata::LevelFilter,
+    warn,
+};
+use tracing_subscriber::FmtSubscriber;
+
+use crate::supervision::{
+    run_short_lived_script,
+    signal_wait_fun,
+    Supervisor,
 };
 
 // This data will be changed frequently
@@ -28,11 +54,11 @@ use tokio::{
 pub struct LiveService {
     pub node: Node,
     // TransitioningServiceState is only internal and should never be sent/received
-    pub tx: Sender<IdleServiceState>,
+    pub tx: broadcast::Sender<IdleServiceState>,
     // Keep a receiving end open so that the sender can always send data
-    _rx: Receiver<IdleServiceState>,
+    _rx: broadcast::Receiver<IdleServiceState>,
     pub state: RefCell<ServiceState>,
-    pub child: RefCell<Option<Child>>,
+    pub terminate: RefCell<Option<watch::Sender<()>>>,
     pub remove: bool,
     pub new: Option<Box<LiveService>>,
 }
@@ -43,11 +69,11 @@ impl LiveService {
         Self {
             node,
             state: RefCell::new(ServiceState::Idle(IdleServiceState::Down)),
-            child: RefCell::new(None),
             remove: false,
             new: None,
             tx,
             _rx: rx,
+            terminate: RefCell::new(None),
         }
     }
 
@@ -122,5 +148,117 @@ impl LiveService {
         new: ServiceState,
     ) {
         self.state.replace(new);
+    }
+
+    pub async fn start_service(
+        &self,
+        logdir: &Path,
+        send: mpsc::Sender<Request>,
+    ) -> bool {
+        match &self.node.service {
+            Service::Longrun(longrun) => {
+                let (tx, rx) = watch::channel(());
+                // terminate is our channel to ask the supervisor to close the process
+                self.terminate.replace(Some(tx));
+                let (fw_handle, logger) = self.logger_subscriber(logdir);
+                let mut supervisor = Supervisor::new(longrun.clone(), rx, fw_handle);
+                async {
+                    match supervisor.start().await {
+                        Ok(res) => {
+                            if res {
+                                task::spawn_local(async move {
+                                    // We need to pass send because it will be used to notify
+                                    if let Err(err) = supervisor.supervise(send).await {
+                                        error!("{err}");
+                                    }
+                                });
+                            }
+                            res
+                        }
+                        Err(err) => {
+                            error!("{err}");
+                            false
+                        }
+                    }
+                }
+                .with_subscriber(logger)
+                .await
+            }
+            Service::Oneshot(oneshot) => {
+                run_short_lived_script(&oneshot.start, &oneshot.environment, signal_wait_fun())
+                    .with_subscriber(self.logger_subscriber(logdir).1)
+                    .await
+                    .unwrap()
+            }
+            Service::Bundle(_) | Service::Virtual(_) => todo!(),
+        }
+    }
+
+    pub async fn stop_service(
+        &self,
+        logdir: &Path,
+    ) {
+        match &self.node.service {
+            Service::Longrun(_) => {
+                if let Some(terminate) = &*self.terminate.borrow() {
+                    // Ask the supervisor to close the process
+                    if let Err(err) = terminate.send(()) {
+                        warn!("{err}");
+                    }
+                }
+            }
+            Service::Oneshot(oneshot) => {
+                if let Some(stop_script) = &oneshot.stop {
+                    let res = run_short_lived_script(
+                        stop_script,
+                        &oneshot.environment,
+                        signal_wait_fun(),
+                    )
+                    .with_subscriber(self.logger_subscriber(logdir).1)
+                    .await;
+                    if let Err(err) = res {
+                        error!("{err}");
+                    }
+                }
+            }
+            Service::Bundle(_) | Service::Virtual(_) => todo!(),
+        }
+    }
+
+    pub fn logger_subscriber(
+        &self,
+        logdir: &Path,
+    ) -> (
+        FileLogWriterHandle,
+        tracing_subscriber::fmt::SubscriberBuilder<
+            tracing_subscriber::fmt::format::DefaultFields,
+            tracing_subscriber::fmt::format::Format,
+            LevelFilter,
+            impl Fn() -> flexi_logger::writers::ArcFileLogWriter,
+        >,
+    ) {
+        let (file_writer, fw_handle) = FileLogWriter::builder(
+            FileSpec::default()
+                .directory(logdir.join(self.node.name()))
+                .basename(self.node.name().to_owned()),
+        )
+        .rotate(
+            Criterion::Size(1024 * 512),
+            Naming::Numbers,
+            Cleanup::KeepCompressedFiles(5),
+        )
+        .append()
+        .write_mode(WriteMode::Async)
+        .try_build_with_handle()
+        .unwrap();
+
+        (
+            fw_handle,
+            FmtSubscriber::builder()
+                .with_level(false)
+                .with_target(false)
+                .with_writer(move || file_writer.clone())
+                .with_max_level(LevelFilter::INFO),
+        )
     }
 }

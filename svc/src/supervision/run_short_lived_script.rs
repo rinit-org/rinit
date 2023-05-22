@@ -17,9 +17,12 @@ use tokio::{
     task,
     time::timeout,
 };
-use tracing::warn;
+use tracing::{
+    instrument::WithSubscriber,
+    warn,
+};
 
-use crate::{
+use crate::supervision::{
     exec_script,
     kill_process,
     log_output,
@@ -49,11 +52,15 @@ where
             .await
             .context("unable to execute script")?;
         let (tx, rx) = oneshot::channel();
-        let logger = task::spawn(log_output(
-            child.stdout.take().unwrap(),
-            child.stderr.take().unwrap(),
-            rx,
-        ));
+        // TODO
+        let logger = task::spawn(
+            log_output(
+                child.stdout.take().unwrap(),
+                child.stderr.take().unwrap(),
+                rx,
+            )
+            .with_current_subscriber(),
+        );
         let script_res = select! {
             timeout_res = timeout(script_timeout, child.wait()) => {
                 if let Ok(exit_status) = timeout_res {
@@ -86,13 +93,13 @@ where
             // The supervisor received a signal while waiting and interuppted the wait
             ScriptResult::SignalReceived => {
                 // Kill the process before exiting
-                kill_process(child, script.down_signal, script.timeout_kill).await?;
+                kill_process(&mut child, script.down_signal, script.timeout_kill).await?;
                 break false;
             }
             // The script didn't exit within timeout
             ScriptResult::TimedOut => {
                 // Kill it and try again
-                kill_process(child, script.down_signal, script.timeout_kill).await?;
+                kill_process(&mut child, script.down_signal, script.timeout_kill).await?;
             }
         }
 
@@ -102,6 +109,7 @@ where
             // Add this as workaround
             tx.send(()).unwrap();
         }
+        // TODO
         logger.await??;
 
         time_tried += 1;

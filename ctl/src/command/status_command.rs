@@ -36,7 +36,7 @@ impl StatusCommand {
 
         let states = if self.services.is_empty() {
             let mut conn = AsyncConnection::new_host_address().await?;
-            let request = Request::ServicesStatus();
+            let request = Request::ServicesStatus;
             let res: Result<Reply, RequestError> = conn.send_request(request).await?;
             match res {
                 Ok(reply) => {
