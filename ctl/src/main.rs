@@ -3,6 +3,8 @@
 mod command;
 mod util;
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::Parser;
 #[derive(Parser)]
@@ -17,6 +19,8 @@ enum Command {
 
 #[derive(Parser)]
 struct Opts {
+    #[clap(short, long, help = "Path to the configuration")]
+    config: Option<PathBuf>,
     #[clap(subcommand)]
     subcmd: Command,
 }
@@ -34,7 +38,7 @@ use rinit_service::config::Config;
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
-    let config = Config::new(None)?;
+    let config = Config::new(opts.config)?;
 
     match opts.subcmd {
         Command::Enable(enable_command) => enable_command.run(config).await?,
