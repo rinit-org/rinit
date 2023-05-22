@@ -5,6 +5,5 @@ members = [
     "ipc",
     "parser",
     "service",
-    "supervision",
     "svc",
 ]

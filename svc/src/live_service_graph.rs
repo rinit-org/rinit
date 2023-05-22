@@ -53,16 +53,21 @@ use tokio::{
         Child,
         Command,
     },
+    task,
     time::timeout,
 };
 use tokio_stream::StreamExt;
 use tracing::{
     debug,
+    error,
     trace,
     warn,
 };
 
-use crate::live_service::LiveService;
+use crate::{
+    live_service::LiveService,
+    supervision::supervise_short_lived_process,
+};
 
 pub struct LiveServiceGraph {
     pub live_services: IndexMap<String, LiveService>,
@@ -247,24 +252,25 @@ impl LiveServiceGraph {
         trace!("waiting for dependencies of {}", live_service.node.name());
         self.wait_on_deps_starting(live_service).await?;
         trace!("dependencies of {} started", live_service.node.name());
-        let res = match &live_service.node.service {
-            Service::Oneshot(_) => Some("--oneshot=start"),
-            Service::Longrun(_) => Some("--longrun=start"),
-            Service::Bundle(_) => None,
-            Service::Virtual(_) => None,
+        match &live_service.node.service {
+            Service::Longrun(_longrun) => {
+                trace!("starting rsupervision for {}", live_service.node.name());
+                let res = task::spawn_local(async {
+                    // let res = supervise_long_lived_process(longrun).await;
+                    // if let Err(err) = res {
+                    //     error!("{err}");
+                    // }
+                });
+                if let Err(err) = res.await {
+                    error!("{err}");
+                }
+                trace!("rsupervision for {} started", live_service.node.name());
+            }
+            Service::Oneshot(oneshot) => {
+                let _ = supervise_short_lived_process(oneshot, "start").await;
+            }
+            Service::Bundle(_) | Service::Virtual(_) => (),
         };
-        if let Some(supervise) = res {
-            // TODO: Add logging and remove unwrap
-            trace!("starting rsupervision for {}", live_service.node.name());
-            let child = spawn_supervisor(vec![
-                supervise,
-                &format!("--logdir={}", self.config.logdir.to_string_lossy()),
-                &serde_json::to_string(&live_service.node.service).unwrap(),
-            ])?;
-            trace!("rsupervision for {} started", live_service.node.name());
-
-            live_service.child.replace(Some(child));
-        }
 
         Ok(())
     }

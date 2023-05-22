@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{
+use crate::supervision::{
     exec_script,
     kill_process,
     log_output,

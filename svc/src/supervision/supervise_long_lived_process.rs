@@ -11,10 +11,7 @@ use rinit_ipc::{
     AsyncConnection,
     Request,
 };
-use rinit_service::types::{
-    Longrun,
-    Service,
-};
+use rinit_service::types::Longrun;
 use tokio::{
     process::Child,
     select,
@@ -33,7 +30,7 @@ use tracing::{
     warn,
 };
 
-use crate::{
+use crate::supervision::{
     exec_script,
     kill_process,
     log_output,
@@ -148,13 +145,9 @@ where
     })
 }
 
-pub async fn supervise_long_lived_process(service: Service) -> Result<()> {
-    let longrun = match service {
-        Service::Longrun(longrun) => longrun,
-        _ => unreachable!(),
-    };
+pub async fn supervise_long_lived_process(longrun: &Longrun) -> Result<()> {
     let mut conn = AsyncConnection::new_host_address().await?;
-    while let Some(mut running_script) = try_start_process(&longrun, signal_wait_fun()).await? {
+    while let Some(mut running_script) = try_start_process(longrun, signal_wait_fun()).await? {
         let request = Request::ServiceIsUp(longrun.name.clone(), true);
         // TODO: handle this
         conn.send_request(request).await??;

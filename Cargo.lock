@@ -151,12 +151,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
-name = "cargo-husky"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b02b629252fe8ef6460461409564e2c21d0c8e77e0944f3d189ff06c4e932ad"
-
-[[package]]
 name = "cc"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1176,28 +1170,6 @@ dependencies = [
  "snafu",
  "toml 0.7.3",
  "xdg",
-]
-
-[[package]]
-name = "rinit-supervision"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cargo-husky",
- "flexi_logger",
- "futures",
- "lazy_static",
- "lexopt",
- "libc",
- "nix",
- "remoc",
- "rinit-ipc",
- "rinit-service",
- "serde_json",
- "snafu",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

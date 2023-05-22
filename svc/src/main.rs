@@ -3,6 +3,7 @@
 pub mod live_service;
 pub mod live_service_graph;
 pub mod request_handler;
+pub mod supervision;
 
 use std::{
     cell::RefCell,
