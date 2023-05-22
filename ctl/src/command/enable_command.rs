@@ -13,14 +13,12 @@ use rinit_ipc::{
 };
 use rinit_parser::parse_services;
 use rinit_service::{
+    config::Config,
     graph::DependencyGraph,
     types::RunLevel,
 };
 
-use crate::{
-    util::start_service,
-    Dirs,
-};
+use crate::util::start_service;
 
 #[derive(Parser)]
 pub struct EnableCommand {
@@ -39,14 +37,14 @@ pub struct EnableCommand {
 impl EnableCommand {
     pub async fn run(
         self,
-        dirs: Dirs,
+        config: Config,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(
             !(1..self.services.len()).any(|i| self.services[i..].contains(&self.services[i - 1])),
             "duplicated service found"
         );
-        let graph_file = dirs.graph_filename();
+        let graph_file = config.dirs.graph_filename();
         let mut graph: DependencyGraph = if graph_file.exists() {
             serde_json::from_slice(
                 &fs::read(&graph_file).with_context(|| format!("unable to read graph from file {:?}", graph_file)
@@ -75,7 +73,7 @@ impl EnableCommand {
 
         let mut success = true;
         if self.atomic_changes {
-            let services = parse_services(self.services.clone(), &dirs, system_mode)
+            let services = parse_services(self.services.clone(), &config.dirs, system_mode)
                 .context("unable to parse services")?;
             // The dependency graph ensure that all the dependencies have the same runlevel
             // So we just check that we the services passed on the command line are the
@@ -139,7 +137,7 @@ impl EnableCommand {
             };
 
             let add_service = |service: &str, graph: &mut DependencyGraph| -> Result<()> {
-                let services = parse_services(vec![service.to_owned()], &dirs, system_mode)
+                let services = parse_services(vec![service.to_owned()], &config.dirs, system_mode)
                     .with_context(|| {
                         format!("unable to parse service {service} and its dependencies")
                     })?;

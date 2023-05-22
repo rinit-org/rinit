@@ -4,12 +4,12 @@ use anyhow::{
 };
 use clap::Parser;
 use rinit_ipc::AsyncConnection;
-use rinit_service::types::RunLevel;
-
-use crate::{
-    util::start_service,
-    Dirs,
+use rinit_service::{
+    config::Config,
+    types::RunLevel,
 };
+
+use crate::util::start_service;
 
 #[derive(Parser)]
 pub struct StartCommand {
@@ -21,7 +21,7 @@ pub struct StartCommand {
 impl StartCommand {
     pub async fn run(
         self,
-        _config: Dirs,
+        _config: Config,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(

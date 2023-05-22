@@ -4,8 +4,7 @@ use rinit_ipc::{
     AsyncConnection,
     Request,
 };
-
-use crate::Dirs;
+use rinit_service::config::Config;
 
 #[derive(Parser)]
 pub struct ReloadCommand {}
@@ -13,7 +12,7 @@ pub struct ReloadCommand {}
 impl ReloadCommand {
     pub async fn run(
         self,
-        _config: Dirs,
+        _config: Config,
     ) -> Result<()> {
         let mut conn = AsyncConnection::new_host_address().await?;
         conn.send_request(Request::ReloadGraph).await??;

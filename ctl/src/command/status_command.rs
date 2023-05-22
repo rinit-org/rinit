@@ -16,8 +16,7 @@ use rinit_ipc::{
     Request,
     RequestError,
 };
-
-use crate::Dirs;
+use rinit_service::config::Config;
 
 #[derive(Parser)]
 pub struct StatusCommand {
@@ -27,7 +26,7 @@ pub struct StatusCommand {
 impl StatusCommand {
     pub async fn run(
         self,
-        _config: Dirs,
+        _config: Config,
     ) -> Result<()> {
         // TODO: Print duplicated service
         ensure!(

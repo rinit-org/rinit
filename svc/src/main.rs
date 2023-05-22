@@ -40,7 +40,7 @@ use nix::{
 use request_handler::RequestHandler;
 use rinit_ipc::Request;
 use rinit_service::{
-    dirs::Dirs,
+    config::Config,
     types::RunLevel,
 };
 use tokio::{
@@ -126,12 +126,12 @@ pub async fn signal_wait() -> Signal {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args = parse_args()?;
-    let config = Dirs::new(args.config)?;
+    let config = Config::new(args.config)?;
 
     // Setup logging
     let (file_writer, _fw_handle) = FileLogWriter::builder(
         FileSpec::default()
-            .directory(&config.logdir)
+            .directory(&config.dirs.logdir)
             .basename("rinit"),
     )
     .rotate(
