@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     env,
+    os::fd::RawFd,
     process::Stdio,
 };
 
@@ -14,6 +15,8 @@ use nix::{
         SigmaskHow,
     },
     unistd::{
+        close,
+        dup2,
         Group,
         Pid,
         User,
@@ -24,16 +27,25 @@ use rinit_service::types::{
     ScriptEnvironment,
     ScriptPrefix,
 };
-use tokio::process::{
-    Child,
-    Command,
+use tokio::{
+    io::{
+        unix::AsyncFd,
+        Interest,
+    },
+    process::{
+        Child,
+        Command,
+    },
 };
-use tracing::warn;
+use tracing::{
+    error,
+    warn,
+};
 
 pub async fn exec_script(
     script: &Script,
     env: &ScriptEnvironment,
-) -> Result<Child> {
+) -> Result<(Child, Option<AsyncFd<i32>>)> {
     let (exe, args) = match &script.prefix {
         ScriptPrefix::Bash => ("bash", vec!["-c", &script.execute]),
         ScriptPrefix::Path => {
@@ -73,7 +85,7 @@ pub async fn exec_script(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     unsafe {
-        cmd.pre_exec(move || -> Result<(), std::io::Error> {
+        cmd.pre_exec(move || {
             let mask = SigSet::empty();
             if let Err(err) = mask.thread_swap_mask(SigmaskHow::SIG_SETMASK) {
                 warn!("failed to unblock signals: {:#?}", err);
@@ -86,11 +98,42 @@ pub async fn exec_script(
         })
     };
 
+    let mut pipe = None;
+    if let Some(notify) = &script.notify {
+        let res = nix::unistd::pipe();
+        match res {
+            Ok((read, write)) => unsafe {
+                pipe = Some((read, write));
+                let notify: RawFd = (*notify).into();
+                cmd.pre_exec(move || {
+                    close(read)?;
+                    dup2(write, notify)?;
+                    close(write)?;
+                    Ok(())
+                });
+            },
+            Err(err) => error!("Could not setup a pipe for readiness: {err}"),
+        }
+    }
+
     let merged_env: HashMap<String, String> = env::vars()
         .chain(env.contents.clone().into_iter())
         .collect();
     cmd.envs(merged_env);
     let child = cmd.spawn().context("unable to spawn script")?;
-
-    Ok(child)
+    Ok((
+        child,
+        pipe.and_then(|(read, write)| {
+            if let Err(err) = close(write) {
+                error!("could not close pipe: {err}");
+            }
+            match AsyncFd::with_interest(read, Interest::READABLE) {
+                Ok(notify) => Some(notify),
+                Err(err) => {
+                    error!("{err}");
+                    None
+                }
+            }
+        }),
+    ))
 }

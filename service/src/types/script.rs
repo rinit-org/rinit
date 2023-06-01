@@ -74,6 +74,8 @@ pub struct Script {
     pub down_signal: i32,
     pub user: Option<String>,
     pub group: Option<String>,
+    // The fd that will receive input as soon as the program start
+    // This is only for programs that implement readiness
     pub notify: Option<u8>,
 }
 

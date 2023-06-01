@@ -41,7 +41,7 @@ pub async fn run_short_lived_script(
 
     let mut time_tried = 0;
     let success = loop {
-        let mut child = exec_script(script, env)
+        let (mut child, _) = exec_script(script, env)
             .await
             .context("unable to execute script")?;
         let (tx, rx) = oneshot::channel();

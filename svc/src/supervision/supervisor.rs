@@ -4,13 +4,16 @@ use std::{
 };
 
 use anyhow::{
+    bail,
     Context,
     Result,
 };
 use flexi_logger::writers::FileLogWriterHandle;
+use futures::future;
 use rinit_ipc::Request;
 use rinit_service::types::Longrun;
 use tokio::{
+    self,
     process::Child,
     select,
     sync::{
@@ -111,7 +114,7 @@ impl Supervisor {
         let script = &self.longrun.run;
         let script_timeout = Duration::from_millis(script.timeout as u64);
 
-        let mut child = exec_script(script, &self.longrun.environment)
+        let (mut child, notify) = exec_script(script, &self.longrun.environment)
             .await
             .context("unable to execute script")?;
         let (tx, rx) = oneshot::channel();
@@ -144,6 +147,25 @@ impl Supervisor {
                 }
                 logger.await??;
                 ScriptResult::Terminated
+            }
+            res = async {
+                if let Some(notify) = notify {
+                    if let Err(err) = notify.readable().await {
+                        tracing::info!("HEREREE");
+                        Some(err)
+                    } else {
+                        None
+                    }
+                } else {
+                    future::pending::<()>().await;
+                    unreachable!()
+                }
+            } => {
+                if let Some(err) = res {
+                    bail!("Could not read notify fd: {err}");
+                } else {
+                    ScriptResult::Running(RunningScript {child, logger, logger_stop: tx})
+                }
             }
         })
     }
