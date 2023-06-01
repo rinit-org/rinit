@@ -45,7 +45,6 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::supervision::{
     run_short_lived_script,
-    signal_wait_fun,
     Supervisor,
 };
 
@@ -185,7 +184,7 @@ impl LiveService {
                 .await
             }
             Service::Oneshot(oneshot) => {
-                run_short_lived_script(&oneshot.start, &oneshot.environment, signal_wait_fun())
+                run_short_lived_script(&oneshot.start, &oneshot.environment)
                     .with_subscriber(self.logger_subscriber(logdir).1)
                     .await
                     .unwrap()
@@ -209,13 +208,9 @@ impl LiveService {
             }
             Service::Oneshot(oneshot) => {
                 if let Some(stop_script) = &oneshot.stop {
-                    let res = run_short_lived_script(
-                        stop_script,
-                        &oneshot.environment,
-                        signal_wait_fun(),
-                    )
-                    .with_subscriber(self.logger_subscriber(logdir).1)
-                    .await;
+                    let res = run_short_lived_script(stop_script, &oneshot.environment)
+                        .with_subscriber(self.logger_subscriber(logdir).1)
+                        .await;
                     if let Err(err) = res {
                         error!("{err}");
                     }

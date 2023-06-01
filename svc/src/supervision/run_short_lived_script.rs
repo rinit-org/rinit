@@ -12,7 +12,6 @@ use rinit_service::types::{
     ScriptEnvironment,
 };
 use tokio::{
-    select,
     sync::oneshot,
     task,
     time::timeout,
@@ -26,24 +25,18 @@ use crate::supervision::{
     exec_script,
     kill_process,
     log_output,
-    signal_wait::WaitFn,
 };
 
 #[derive(Debug, PartialEq, Eq)]
 enum ScriptResult {
     Exited(ExitStatus),
-    SignalReceived,
     TimedOut,
 }
 
-pub async fn run_short_lived_script<F>(
+pub async fn run_short_lived_script(
     script: &Script,
     env: &ScriptEnvironment,
-    mut wait: F,
-) -> Result<bool>
-where
-    F: FnMut() -> WaitFn,
-{
+) -> Result<bool> {
     let script_timeout = Duration::from_millis(script.timeout as u64);
 
     let mut time_tried = 0;
@@ -61,25 +54,21 @@ where
             )
             .with_current_subscriber(),
         );
-        let script_res = select! {
-            timeout_res = timeout(script_timeout, child.wait()) => {
-                if let Ok(exit_status) = timeout_res {
-                    ScriptResult::Exited(match exit_status.context("unable to call wait on child") {
-                        Ok(exit_status) => exit_status,
-                        Err(err) => {
-                            warn!("{err}");
-                            time_tried += 1;
-                            if time_tried == script.max_deaths {
-                                break false;
-                            }
-                            continue
-                        },
-                    })
-                } else {
-                    ScriptResult::TimedOut
+        let timeout_res = timeout(script_timeout, child.wait()).await;
+        let script_res = if let Ok(exit_status) = timeout_res {
+            ScriptResult::Exited(match exit_status.context("unable to call wait on child") {
+                Ok(exit_status) => exit_status,
+                Err(err) => {
+                    warn!("{err}");
+                    time_tried += 1;
+                    if time_tried == script.max_deaths {
+                        break false;
+                    }
+                    continue;
                 }
-            }
-            _ = wait() => ScriptResult::SignalReceived
+            })
+        } else {
+            ScriptResult::TimedOut
         };
 
         match script_res {
@@ -89,12 +78,6 @@ where
                 if exit_status.success() {
                     break true;
                 }
-            }
-            // The supervisor received a signal while waiting and interuppted the wait
-            ScriptResult::SignalReceived => {
-                // Kill the process before exiting
-                kill_process(&mut child, script.down_signal, script.timeout_kill).await?;
-                break false;
             }
             // The script didn't exit within timeout
             ScriptResult::TimedOut => {
@@ -109,7 +92,6 @@ where
             // Add this as workaround
             tx.send(()).unwrap();
         }
-        // TODO
         logger.await??;
 
         time_tried += 1;
@@ -125,31 +107,16 @@ where
 mod tests {
     use std::path::Path;
 
-    use nix::sys::signal::Signal;
     use rinit_service::types::ScriptPrefix;
-    use tokio::{
-        fs::remove_file,
-        time::sleep,
-    };
+    use tokio::fs::remove_file;
 
     use super::*;
-
-    macro_rules! wait {
-        ($time:literal) => {
-            || {
-                Box::pin(tokio::spawn(async {
-                    sleep(Duration::from_secs($time)).await;
-                    Signal::SIGUSR1
-                }))
-            }
-        };
-    }
 
     #[tokio::test]
     async fn test_run_script_success() {
         let script = Script::new(ScriptPrefix::Bash, "exit 0".to_string());
         assert!(
-            run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+            run_short_lived_script(&script, &ScriptEnvironment::default())
                 .await
                 .unwrap()
         );
@@ -159,7 +126,7 @@ mod tests {
     async fn test_run_script_failure() {
         let script = Script::new(ScriptPrefix::Bash, "exit 1".to_string());
         assert!(
-            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+            !run_short_lived_script(&script, &ScriptEnvironment::default())
                 .await
                 .unwrap()
         );
@@ -170,7 +137,7 @@ mod tests {
         let mut script = Script::new(ScriptPrefix::Bash, "sleep 15".to_string());
         script.timeout = 10;
         assert!(
-            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+            !run_short_lived_script(&script, &ScriptEnvironment::default())
                 .await
                 .unwrap()
         );
@@ -187,7 +154,7 @@ mod tests {
         script.down_signal = 10;
         script.max_deaths = 1;
         assert!(
-            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+            !run_short_lived_script(&script, &ScriptEnvironment::default())
                 .await
                 .unwrap()
         );
@@ -198,7 +165,7 @@ mod tests {
         let filename = "test_run_script_side_effects";
         let script = Script::new(ScriptPrefix::Bash, format!("touch {filename}"));
         assert!(
-            run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(100))
+            run_short_lived_script(&script, &ScriptEnvironment::default())
                 .await
                 .unwrap()
         );
@@ -213,45 +180,9 @@ mod tests {
         let script = Script::new(ScriptPrefix::Bash, "touch ${filename}".to_string());
         let mut env = ScriptEnvironment::new();
         env.add("filename", filename.to_string());
-        assert!(
-            run_short_lived_script(&script, &env, wait!(100))
-                .await
-                .unwrap()
-        );
+        assert!(run_short_lived_script(&script, &env).await.unwrap());
         assert!(Path::new(filename).exists());
         // cleanup
         remove_file(filename).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn receive_signal_while_starting_prefix_path() {
-        // Spawn another bash shell and listen for SIGTERM signals there
-        // We want to be sure that bash is properly sending SIGTERM to all its children
-        // (which is still bash in this case)
-        let execute = "sleep 100".to_string();
-        let mut script = Script::new(ScriptPrefix::Path, execute);
-        script.timeout = 100000;
-        // Wait 50 milliseconds to give time for the file to be created
-        assert!(
-            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(1))
-                .await
-                .unwrap()
-        );
-    }
-
-    #[tokio::test]
-    async fn receive_signal_while_starting_prefix_bash() {
-        // Spawn another bash shell and listen for SIGTERM signals there
-        // We want to be sure that bash is properly sending SIGTERM to all its children
-        // (which is still bash in this case)
-        let execute = "sleep 100".to_string();
-        let mut script = Script::new(ScriptPrefix::Bash, execute);
-        script.timeout = 100000;
-        // Wait 50 milliseconds to give time for the file to be created
-        assert!(
-            !run_short_lived_script(&script, &ScriptEnvironment::default(), wait!(1))
-                .await
-                .unwrap()
-        );
     }
 }

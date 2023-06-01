@@ -38,7 +38,6 @@ use crate::supervision::{
     kill_process,
     log_output,
     run_short_lived_script,
-    signal_wait::signal_wait_fun,
 };
 
 struct RunningScript {
@@ -89,12 +88,8 @@ impl Supervisor {
                     warn!("process exited with {status}");
                     time_tried += 1;
                     if let Some(finish_script) = &self.longrun.finish {
-                        let _ = run_short_lived_script(
-                            finish_script,
-                            &self.longrun.environment,
-                            signal_wait_fun(),
-                        )
-                        .await;
+                        let _ =
+                            run_short_lived_script(finish_script, &self.longrun.environment).await;
                     }
                     if time_tried == self.longrun.run.max_deaths {
                         break false;
