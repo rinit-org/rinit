@@ -238,7 +238,7 @@ mod test {
     macro_rules! spawn_local {
         ($fn:expr) => {
             let local_set = task::LocalSet::new();
-            local_set.spawn_local($fn);
+            local_set.run_until($fn).await;
         };
     }
 
