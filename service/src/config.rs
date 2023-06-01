@@ -32,6 +32,7 @@ const CONF_FILENAME: &str = "rinit.conf";
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Config {
+    #[serde(flatten)]
     pub dirs: Dirs,
 }
 
@@ -65,20 +66,18 @@ impl Config {
         } else if Path::new(CONF_FILENAME).exists() {
             // Read the conf in the current working directory
             conf.merge(providers::Toml::file(Path::new(CONF_FILENAME)))
+        } else if uid != 0 {
+            conf.merge(providers::Toml::string(
+                &toml::to_string(&Dirs::new_user_dirs().context(DirectoriesSnafu {})?).unwrap(),
+            ))
+            // Configuration from /etc/rinit/rinit.conf is not read in user
+            // mode because the values are completely
+            // different.
         } else {
-            if uid != 0 {
-                conf.merge(providers::Toml::string(
-                    &toml::to_string(&Dirs::new_user_dirs().context(DirectoriesSnafu {})?).unwrap(),
-                ))
-                // Configuration from /etc/rinit/rinit.conf is not read in user
-                // mode because the values are completely
-                // different.
-            } else {
-                // read the system configuration
-                conf.merge(providers::Toml::file(
-                    Dirs::new_system_dirs().configdir.join(CONF_FILENAME),
-                ))
-            }
+            // read the system configuration
+            conf.merge(providers::Toml::file(
+                Dirs::new_system_dirs().configdir.join(CONF_FILENAME),
+            ))
         };
 
         // Read the configuration variables from the env
