@@ -300,13 +300,8 @@ impl DependencyGraph {
                 }
             });
 
-        // The node to remove is the last one
-        if index == self.nodes.len() - 1 {
-            self.nodes.pop();
-            return;
-        }
-
-        self.nodes[index] = self.nodes.pop().unwrap().1;
+        // Remove the node by swapping, let IndexMap handle it
+        self.nodes.swap_remove_index(index);
     }
 
     fn is_node_required(
