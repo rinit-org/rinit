@@ -1,7 +1,12 @@
 use std::{
     collections::HashMap,
     env,
-    os::fd::RawFd,
+    os::fd::{
+        AsRawFd,
+        IntoRawFd,
+        OwnedFd,
+        RawFd,
+    },
     process::Stdio,
 };
 
@@ -15,11 +20,11 @@ use nix::{
         SigmaskHow,
     },
     unistd::{
-        close,
-        dup2,
         Group,
         Pid,
         User,
+        close,
+        dup2,
     },
 };
 use rinit_service::types::{
@@ -29,8 +34,8 @@ use rinit_service::types::{
 };
 use tokio::{
     io::{
-        unix::AsyncFd,
         Interest,
+        unix::AsyncFd,
     },
     process::{
         Child,
@@ -45,7 +50,7 @@ use tracing::{
 pub async fn exec_script(
     script: &Script,
     env: &ScriptEnvironment,
-) -> Result<(Child, Option<AsyncFd<i32>>)> {
+) -> Result<(Child, Option<AsyncFd<OwnedFd>>)> {
     let (exe, args) = match &script.prefix {
         ScriptPrefix::Bash => ("bash", vec!["-c", &script.execute]),
         ScriptPrefix::Path => {
@@ -106,9 +111,9 @@ pub async fn exec_script(
                 pipe = Some((read, write));
                 let notify: RawFd = (*notify).into();
                 cmd.pre_exec(move || {
-                    close(read)?;
-                    dup2(write, notify)?;
-                    close(write)?;
+                    drop(read);
+                    dup2(write.as_raw_fd(), notify)?;
+                    drop(write);
                     Ok(())
                 });
             },
@@ -124,9 +129,7 @@ pub async fn exec_script(
     Ok((
         child,
         pipe.and_then(|(read, write)| {
-            if let Err(err) = close(write) {
-                error!("could not close pipe: {err}");
-            }
+            drop(write);
             match AsyncFd::with_interest(read, Interest::READABLE) {
                 Ok(notify) => Some(notify),
                 Err(err) => {

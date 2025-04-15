@@ -1,0 +1,2 @@
+- svc: Handle multiple services in one request (start/stop)
+- ctl: Check if status changed (start/stop)

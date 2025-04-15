@@ -171,6 +171,8 @@ impl LiveServiceGraph {
             .collect()
     }
 
+    /// start a service and its dependencies if needed
+    /// Error if the service or one of its dependencies fail to start
     #[async_recursion(?Send)]
     pub async fn start_service(
         &self,

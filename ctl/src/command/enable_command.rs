@@ -169,7 +169,6 @@ impl EnableCommand {
                     if self.stop_at_errors {
                         bail!(err);
                     } else {
-                        eprintln!("err");
                         success = false;
                     }
                 }

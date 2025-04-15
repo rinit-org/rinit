@@ -16,7 +16,22 @@ pub async fn start_service(
         runlevel,
     };
     match conn.send_request(request).await?? {
-        Reply::Success(success) => Ok(success),
+        Reply::Success() => Ok(true),
+        _ => unreachable!(),
+    }
+}
+
+pub async fn stop_service(
+    conn: &mut AsyncConnection,
+    service: &str,
+    runlevel: RunLevel,
+) -> Result<bool> {
+    let request = Request::StartService {
+        service: service.to_owned(),
+        runlevel,
+    };
+    match conn.send_request(request).await?? {
+        Reply::Success() => Ok(true),
         _ => unreachable!(),
     }
 }

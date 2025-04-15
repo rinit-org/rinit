@@ -1,0 +1,10 @@
+{
+        "lspconfig": {
+                "rust_analyzer": {
+                        "server": {
+                                "extraEnv": { "RUSTUP_TOOLCHAIN": "nightly" },
+                                "cmd": ["rustup", "run", "nightly", "rust-analyzer"]
+                        }
+                }
+        }
+}

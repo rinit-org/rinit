@@ -4,10 +4,10 @@ use futures::{
 };
 use remoc::rch;
 use rinit_ipc::{
-    request_error::RequestError,
     ConnectionError as ConnectionErrorGeneric,
     Reply,
     Request,
+    request_error::RequestError,
 };
 use rinit_service::service_state::{
     IdleServiceState,
@@ -16,8 +16,8 @@ use rinit_service::service_state::{
 use tokio::{
     net::UnixStream,
     sync::{
-        watch,
         RwLock,
+        watch,
     },
     task,
 };
@@ -49,7 +49,10 @@ impl RequestHandler {
         }
     }
 
-    // Read IPC messages (i.e. rctl)
+    /// Read IPC messages (i.e. rctl)
+    /// This function gets spawned into a separate task, meaning that we don't
+    /// need to spawn anything else. This is important because otherwise,
+    /// requests couldn't be handled in parallel
     pub async fn handle_ipc_stream(
         &self,
         stream: UnixStream,
@@ -59,7 +62,7 @@ impl RequestHandler {
             _,
             rch::base::Sender<Result<Reply, RequestError>>,
             rch::base::Receiver<Request>,
-        ) = remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await?;
+        ) = remoc::Connect::io_buffered(remoc::Cfg::default(), socket_rx, socket_tx, 1024).await?;
         // This has to be spawned in a different task, otherwise everything blocks
         task::spawn_local(conn);
         loop {
@@ -73,11 +76,11 @@ impl RequestHandler {
                 }
                 Err(err) => {
                     match err {
-                        // The connection terminated, break out of the loop
                         rch::base::RecvError::Receive(err) if err.is_terminated() => break,
                         rch::base::RecvError::Receive(_)
                         | rch::base::RecvError::Deserialize(_)
-                        | rch::base::RecvError::MissingPorts(_) => {
+                        | rch::base::RecvError::MissingPorts(_)
+                        | rch::base::RecvError::MaxItemSizeExceeded => {
                             return Err(ConnectionError::ReceiveError { source: err });
                         }
                     }
@@ -127,16 +130,17 @@ impl RequestHandler {
             Request::StartService { service, runlevel } => {
                 graph.check_runlevel(&service, runlevel)?;
                 graph.start_service(graph.get_service(&service)?).await?;
-                let state = graph.get_service(&service)?.wait_idle_state();
-                drop(graph);
-                Reply::Success(state.await == IdleServiceState::Up)
+                // Wait until the service is idle
+                graph.get_service(&service)?.wait_idle_state();
+                Reply::Success()
             }
             Request::StopService { service, runlevel } => {
                 graph.check_runlevel(&service, runlevel)?;
                 graph.stop_service(graph.get_service(&service)?).await?;
+                // Wait until the service is idle
+                graph.get_service(&service)?.wait_idle_state();
                 let state = graph.get_service(&service)?.wait_idle_state();
-                drop(graph);
-                Reply::Success(state.await == IdleServiceState::Down)
+                Reply::Success()
             }
             Request::StartAllServices => {
                 graph

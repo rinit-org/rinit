@@ -8,6 +8,6 @@ use serde::{
 pub enum Reply {
     ServicesStates(Vec<(String, ServiceState)>),
     ServiceState(String, ServiceState),
-    Success(bool),
+    Success(),
     Empty,
 }

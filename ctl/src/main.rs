@@ -14,6 +14,7 @@ enum Command {
     Status(StatusCommand),
     Start(StartCommand),
     Stop(StopCommand),
+    Restart(RestartCommand),
     Reload(ReloadCommand),
 }
 
@@ -28,6 +29,7 @@ use command::{
     DisableCommand,
     EnableCommand,
     ReloadCommand,
+    RestartCommand,
     StartCommand,
     StatusCommand,
     StopCommand,
@@ -46,6 +48,7 @@ async fn main() -> Result<()> {
         Command::Status(status_command) => status_command.run(config).await?,
         Command::Start(start_command) => start_command.run(config).await?,
         Command::Stop(stop_command) => stop_command.run(config).await?,
+        Command::Restart(restart_command) => restart_command.run(config).await?,
         Command::Reload(reload_command) => reload_command.run(config).await?,
     }
 

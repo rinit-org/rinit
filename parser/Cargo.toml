@@ -6,6 +6,6 @@ edition = "2021"
 
 [dependencies]
 rinit-service = { path = "../service" }
-nix = "0.26.2"
-snafu = "0.7.4"
+nix = { version = "0.29.0", features = ["signal", "user"] }
+snafu = "0.8.5"
 snailquote = "0.3.1"

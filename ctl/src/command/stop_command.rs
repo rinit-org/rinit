@@ -18,6 +18,7 @@ use rinit_service::{
     config::Config,
     types::RunLevel,
 };
+use tokio::task;
 
 #[derive(Parser)]
 pub struct StopCommand {
@@ -36,43 +37,44 @@ impl StopCommand {
             !(1..self.services.len()).any(|i| self.services[i..].contains(&self.services[i - 1])),
             "duplicated service found"
         );
-
         let conn = Rc::new(RefCell::new(AsyncConnection::new_host_address().await?));
-        let success = futures::stream::iter(
-            self.services
-                .into_iter()
-                .map(|service| (service, conn.clone())),
-        )
-        .map(async move |(service, conn)| -> Result<()> {
-            let request = Request::StopService {
-                service: service.clone(),
-                runlevel: self.runlevel,
-            };
-            let res = conn.borrow_mut().send_request(request).await?;
+        let handles: Vec<task::JoinHandle<Result<bool>>> = self
+            .services
+            .into_iter()
+            .map(
+                move |service| -> task::JoinHandle<std::result::Result<bool, _>> {
+                    let conn = conn.clone();
+                    task::spawn_local(async move {
+                        let request = Request::StopService {
+                            service: service.clone(),
+                            runlevel: self.runlevel,
+                        };
+                        let res = conn.borrow_mut().send_request(request).await?;
 
-            match res {
-                Ok(reply) => {
-                    match reply {
-                        Reply::Success(success) => {
-                            if success {
-                                println!("Service {service} stopped successfully.");
-                            } else {
-                                println!("Service {service} failed to stop.");
+                        match res {
+                            Ok(reply) => {
+                                match reply {
+                                    Reply::Success() => {
+                                        println!("Service {service} stopped successfully.");
+                                        Ok(true)
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                            Err(err) => {
+                                eprintln!("Service {service} failed to stop: {err}");
+                                Ok(false)
                             }
                         }
-                        _ => unreachable!(),
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                }
-            }
-            Ok(())
-        })
-        .any(async move |res| res.await.is_err())
-        .await;
+                    })
+                },
+            )
+            .collect();
 
-        ensure!(success, "");
+        let mut success = false;
+        for handle in handles {
+            success = handle.await?? | success
+        }
 
         Ok(())
     }
